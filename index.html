@@ -18,7 +18,17 @@
     display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
   header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
   header .sub{color:#9fb0c7;font-size:12.5px}
-  .wrap{max-width:1280px;margin:0 auto;padding:18px}
+  .wrap{max-width:1760px;margin:0 auto;padding:18px}
+  /* Vollbild-Wickelschema (Hauptspalte) + Nebendiagramme als Sidebar */
+  .layout-2col{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:18px;align-items:start}
+  .main-col{min-width:0}
+  .main-col .card{position:sticky;top:14px}
+  .side-col{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .side-col .grid2{grid-template-columns:1fr}
+  .side-col svg{width:100%}
+  .side-col .controls{grid-template-columns:1fr 1fr}
+  .side-col .wsel-results{max-height:150px}
+  @media(max-width:1080px){.layout-2col{grid-template-columns:1fr}.main-col .card{position:static}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
     box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
   .card>h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
@@ -1293,6 +1303,28 @@ function runSelfTest(){
   return {pass, fail};
 }
 
+/* Zweispalten-Layout: Wickelschema gross in der Hauptspalte, Rest als Sidebar */
+function layoutTwoColumn(){
+  const wrap=document.querySelector('.wrap');
+  const eingabe=document.querySelector('.controls-card');
+  const messages=document.getElementById('messages');
+  const selftest=document.getElementById('selftestCard');
+  const cards=[...wrap.children].filter(c=>c.classList.contains('card')||c.classList.contains('grid2'));
+  const schema=cards.find(c=>c.querySelector('h2') && c.querySelector('h2').textContent.includes('Wickelschema'));
+  if(!schema) return;
+  const sideCards=cards.filter(c=> c!==eingabe && c!==schema && c!==selftest);
+  const layout=document.createElement('div'); layout.className='layout-2col';
+  const main=document.createElement('div'); main.className='main-col';
+  const side=document.createElement('div'); side.className='side-col';
+  layout.appendChild(main); layout.appendChild(side);
+  wrap.insertBefore(layout, wrap.firstChild);
+  main.appendChild(schema);
+  side.appendChild(eingabe);                  // Auswahl/Eingabe oben in der Sidebar
+  side.appendChild(messages);
+  sideCards.forEach(c=> side.appendChild(c)); // Kennwerte + Nebendiagramme darunter
+  if(selftest) wrap.appendChild(selftest);    // Selbsttest unten, volle Breite
+}
+
 /* ------------------------------ INIT ------------------------------- */
 window.addEventListener('DOMContentLoaded',()=>{
   buildPresets();
@@ -1303,6 +1335,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   fillPresets();
   initSelector();
   bind();
+  layoutTwoColumn();
   const fromHash=loadFromHash();
   if(!fromHash){ document.getElementById('preset').value='1'; applyPreset(); SEL.idx=1; renderSelResults(); }
   else refresh(false);
