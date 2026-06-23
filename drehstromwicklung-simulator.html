@@ -566,8 +566,8 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   // Knoten je Spule (Eintritt/Austritt unten, polrichtig)
   const node=c=> c.sign>0 ? {inX:xG(c.go), outX:xR(c.ret)} : {inX:xR(c.ret), outX:xG(c.go)};
   const frontMax=barTop-frontTop-4, backMax=backBot-barBot-20;
-  const apexF=(a,b)=> Math.min(frontMax, 14+Math.abs(b-a)/dx*2.4);
-  const apexB=(a,b)=> Math.min(backMax, 12+Math.abs(b-a)/dx*1.7);
+  const apexF=(a,b)=> Math.min(frontMax, 28+Math.abs(b-a)/dx*4.8);
+  const apexB=(a,b)=> Math.min(backMax, 24+Math.abs(b-a)/dx*3.4);
   // Durchgehende Ader: Klemme1 -> Spulen -> Klemme2 (schraege Wickelkoepfe)
   const P=[];
   series.forEach((c,i)=>{
@@ -612,8 +612,8 @@ function renderSchema(model){
   const lbl=`Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
   if(SCHEMA_VIEW==='tracks'){
     const dx=Math.max(32, Math.min(62, 1300/Q));
-    const padL=56, padR=30, titleH=32, trackH=210;
-    const frontSpan=70, barH=52, backSpan=88;
+    const padL=56, padR=30, titleH=32, trackH=430;
+    const frontSpan=140, barH=104, backSpan=176;
     const Wd=padL+padR+Q*dx, H=titleH+3*trackH+14;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
@@ -632,7 +632,7 @@ function renderSchema(model){
     const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
     const dx=Math.max(36, Math.min(72, 1500/Q));
     const padL=56, padR=30, titleH=30;
-    const frontSpan=104, barH=96, backSpan=116;
+    const frontSpan=208, barH=192, backSpan=232;
     const barTop=titleH+frontSpan, barBot=barTop+barH;
     const frontTop=titleH+6, backBot=barBot+backSpan-18;
     const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan;
