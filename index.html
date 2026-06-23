@@ -71,6 +71,26 @@
   .seg button:last-child{border-right:none}
   .seg button.active{background:var(--accent);color:#fff}
   .seg button:not(.active):hover{background:#f1f5f9}
+  /* Wicklungs-Auswahl */
+  .wsel{display:flex;flex-direction:column;gap:9px;margin-bottom:14px}
+  .wsel-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .wsel-search{flex:1;min-width:220px;padding:8px 11px;border:1px solid var(--line);border-radius:7px;font-size:13.5px}
+  .wsel-f{padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:13px}
+  .wsel .lbl{font-size:12px;color:var(--muted);font-weight:600}
+  .wsel-motor{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .wsel-motor input{width:78px;padding:6px 7px;border:1px solid var(--line);border-radius:6px;font-size:13px}
+  .wsel-motor label{font-size:12.5px;color:var(--ink);display:inline-flex;gap:5px;align-items:center}
+  .chips{display:flex;gap:5px;flex-wrap:wrap}
+  .chip{padding:5px 11px;border:1px solid var(--line);border-radius:14px;background:#fff;font-size:12.5px;cursor:pointer;font-weight:600;color:var(--ink)}
+  .chip:hover{background:#f1f5f9}
+  .chip.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .wsel-results{display:flex;flex-direction:column;gap:2px;max-height:250px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:5px;background:#fff}
+  .wres{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px}
+  .wres:hover{background:#eef2ff}
+  .wres.active{background:var(--accent);color:#fff}
+  .wres .meta{color:var(--muted);font-size:11.5px;white-space:nowrap}
+  .wres.active .meta{color:#dbe4ff}
+  .wres-count{font-size:11.5px;color:var(--muted);padding:3px 6px}
   .note{font-size:11.5px;color:var(--muted);margin-top:8px}
   #selftest{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
   .pass{color:var(--ok)}.fail{color:var(--bad);font-weight:700}
@@ -93,12 +113,34 @@
   <div class="card controls-card">
     <h2>Eingabe</h2>
     <div class="body">
-      <div class="row" style="margin-bottom:12px">
-        <div class="field" style="min-width:260px;flex:1">
-          <label for="preset">Vorlage (Preset)</label>
-          <select id="preset"></select>
+      <select id="preset" style="display:none"></select>
+      <div class="wsel">
+        <div class="wsel-row">
+          <input id="selSearch" class="wsel-search" type="text" placeholder="Suche: z. B. 36/4, 1400, Zahnspule, q=2 …">
+          <select id="selLayer" class="wsel-f">
+            <option value="all">Schicht: alle</option>
+            <option value="2">Zweischicht</option>
+            <option value="1">Einschicht</option>
+          </select>
+          <select id="selType" class="wsel-f">
+            <option value="all">Typ: alle</option>
+            <option value="integer">Ganzloch</option>
+            <option value="fractional">Bruchloch</option>
+            <option value="toothcoil">Zahnspule</option>
+          </select>
         </div>
-        <button id="applyPreset" class="primary">Preset laden</button>
+        <div class="wsel-row wsel-motor">
+          <span class="lbl">Motor-Assistent (50 Hz):</span>
+          <label>Nuten <input id="selMotorQ" type="number" min="6" max="48" value="36"></label>
+          <label>Drehzahl <input id="selMotorRpm" type="number" min="100" max="3600" step="50" value="1400"> min⁻¹</label>
+          <button id="selMotorGo">Wicklung vorschlagen</button>
+          <span id="selMotorResult" class="note"></span>
+        </div>
+        <div class="wsel-row">
+          <span class="lbl">Nutenzahl:</span>
+          <span id="selQchips" class="chips"></span>
+        </div>
+        <div class="wsel-results" id="selResults"></div>
       </div>
       <div class="controls">
         <div class="field">
@@ -983,6 +1025,85 @@ function applyPreset(){
   refresh(true);
 }
 
+/* ---- Wicklungs-Auswahl (Suche + Filter + gefuehrt + Motor-Assistent) ---- */
+const SEL={search:'', layer:'all', type:'all', q:null, idx:null};
+function presetType(p){ const q=p.Q/(p.poles*M); return q<1?'toothcoil':(Number.isInteger(q)?'integer':'fractional'); }
+function presetKw(p){ const y=Math.max(1,Math.round(windingParams(p.Q,p.poles).tau_p)); return windingFactors(p.Q,p.poles,y,60)[1].kw; }
+function presetMatch(p){
+  if(SEL.layer!=='all' && String(p.layers)!==SEL.layer) return false;
+  if(SEL.type!=='all' && presetType(p)!==SEL.type) return false;
+  if(SEL.q!=null && p.Q!==SEL.q) return false;
+  if(SEL.search){
+    const raw=SEL.search.trim().toLowerCase();
+    const qp=raw.match(/^(\d+)\s*\/\s*(\d+)$/);
+    if(qp){
+      if(p.Q!==+qp[1] || p.poles!==+qp[2]) return false;   // Q/2p exakt
+    } else {
+      const q=p.Q/(p.poles*M), n=120*50/p.poles;
+      const hay=`${p.Q}/${p.poles} q=${q.toFixed(2)} q=${Math.round(q)} ${n.toFixed(0)} ${presetType(p)} ${p.layers===1?'einschicht':'zweischicht'} ${(p.name||'')}`
+        .toLowerCase().replace(/\s/g,'');
+      if(!hay.includes(raw.replace(/\s/g,''))) return false;
+    }
+  }
+  return true;
+}
+function renderSelQchips(){
+  const qs=[...new Set(PRESETS.filter(p=>!p.name).map(p=>p.Q))].sort((a,b)=>a-b);
+  document.getElementById('selQchips').innerHTML =
+    `<span class="chip ${SEL.q==null?'active':''}" data-q="">alle</span>`+
+    qs.map(q=>`<span class="chip ${SEL.q===q?'active':''}" data-q="${q}">${q}</span>`).join('');
+}
+function renderSelResults(){
+  const res=PRESETS.map((p,i)=>({p,i})).filter(o=>presetMatch(o.p));
+  document.getElementById('selResults').innerHTML =
+    `<div class="wres-count">${res.length} Wicklung${res.length===1?'':'en'}</div>`+
+    res.map(o=>{
+      const p=o.p, q=p.Q/(p.poles*M), n=120*50/p.poles;
+      const lab=p.name||`${p.Q}/${p.poles} · ${p.layers===1?'Einschicht':'Zweischicht'}`;
+      const meta=`q=${Number.isInteger(q)?q:q.toFixed(3)} · ${n.toFixed(0)} min⁻¹ · k_w=${presetKw(p).toFixed(3)}`;
+      return `<div class="wres ${SEL.idx===o.i?'active':''}" data-idx="${o.i}"><span>${lab}</span><span class="meta">${meta}</span></div>`;
+    }).join('') || '<div class="wres-count">keine Treffer</div>';
+}
+function loadPresetIdx(i){
+  SEL.idx=i;
+  document.getElementById('preset').value=i;
+  applyPreset();
+  renderSelResults();
+}
+function selMotorSuggest(){
+  const Q=Math.round(+document.getElementById('selMotorQ').value);
+  const rpm=+document.getElementById('selMotorRpm').value;
+  const res=document.getElementById('selMotorResult');
+  if(!rpm||rpm<1){ res.textContent='Drehzahl eingeben.'; return; }
+  const poles=Math.max(2, Math.round(120*50/rpm/2)*2);
+  const cand=PRESETS.map((p,i)=>({p,i})).filter(o=>o.p.Q===Q && o.p.poles===poles && !o.p.name);
+  if(!cand.length){
+    res.innerHTML=`<span style="color:var(--bad)">${Q}/${poles} nicht realisierbar (n_syn=${(120*50/poles).toFixed(0)} min⁻¹). Nuten muss durch 3 teilbar sein.</span>`;
+    return;
+  }
+  cand.sort((a,b)=>b.p.layers-a.p.layers);   // Zweischicht bevorzugen
+  res.innerHTML=`Vorschlag <b>${Q}/${poles}</b> · n_syn=${(120*50/poles).toFixed(0)} min⁻¹ – geladen.`;
+  SEL.q=Q; SEL.search=''; SEL.layer='all'; SEL.type='all';
+  document.getElementById('selSearch').value='';
+  document.getElementById('selLayer').value='all';
+  document.getElementById('selType').value='all';
+  renderSelQchips(); loadPresetIdx(cand[0].i);
+}
+function initSelector(){
+  renderSelQchips(); renderSelResults();
+  document.getElementById('selSearch').addEventListener('input',e=>{SEL.search=e.target.value;renderSelResults();});
+  document.getElementById('selLayer').addEventListener('change',e=>{SEL.layer=e.target.value;renderSelResults();});
+  document.getElementById('selType').addEventListener('change',e=>{SEL.type=e.target.value;renderSelResults();});
+  document.getElementById('selQchips').addEventListener('click',e=>{
+    const c=e.target.closest('.chip'); if(!c) return;
+    SEL.q=c.dataset.q?+c.dataset.q:null; renderSelQchips(); renderSelResults();
+  });
+  document.getElementById('selResults').addEventListener('click',e=>{
+    const r=e.target.closest('.wres'); if(!r) return; loadPresetIdx(+r.dataset.idx);
+  });
+  document.getElementById('selMotorGo').addEventListener('click',selMotorSuggest);
+}
+
 /* Export / Print / Link */
 function exportJson(){
   const data=JSON.stringify(readState(),null,2);
@@ -1023,7 +1144,6 @@ function bind(){
     .forEach(id=>document.getElementById(id).addEventListener('input',()=>{ if(CURRENT) renderWire(CURRENT); }));
   document.getElementById('pitch').addEventListener('input',()=>refresh(false));
   document.getElementById('autoPitch').addEventListener('click',()=>refresh(true));
-  document.getElementById('applyPreset').addEventListener('click',applyPreset);
   document.getElementById('playBtn').addEventListener('click',toggleAnim);
   document.getElementById('printBtn').addEventListener('click',()=>window.print());
   document.getElementById('exportJson').addEventListener('click',exportJson);
@@ -1104,9 +1224,10 @@ function runSelfTest(){
 window.addEventListener('DOMContentLoaded',()=>{
   buildPresets();
   fillPresets();
+  initSelector();
   bind();
   const fromHash=loadFromHash();
-  if(!fromHash){ document.getElementById('preset').value='1'; applyPreset(); }
+  if(!fromHash){ document.getElementById('preset').value='1'; applyPreset(); SEL.idx=1; renderSelResults(); }
   else refresh(false);
   if(new URLSearchParams(location.search).get('selftest')==='1'){
     runSelfTest();
