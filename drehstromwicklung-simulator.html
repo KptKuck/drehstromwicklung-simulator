@@ -239,6 +239,11 @@
             <button data-ph="V" style="color:var(--V)">V</button>
             <button data-ph="W" style="color:var(--W)">W</button>
           </span></span>
+        <span><span class="lbl">Spulensprung</span>
+          <span class="seg" id="coilSeg">
+            <button data-conc="0" class="active">gleiche Weite</button>
+            <button data-conc="1">konzentrisch</button>
+          </span></span>
       </div>
       <div class="legend" id="legend"></div>
       <div class="svg-scroll"><svg id="schema"></svg></div>
@@ -440,17 +445,32 @@ function windingFactors(Q, poles, y, zoneWidth){
   return res;
 }
 
+/** Konzentrische Umverdrahtung: innerhalb jeder Polgruppe (aufeinanderfolgende
+ *  Spulen gleicher Zone) die Rueckleiter umkehren -> ineinander geschachtelte
+ *  Spulen unterschiedlicher Weite. Gleiche Nutbelegung, gleicher k_w. */
+function concentricRewire(coils, Q){
+  const c = coils.slice().sort((a,b)=>a.go-b.go);
+  let i=0;
+  while(i<c.length){
+    let j=i;
+    while(j+1<c.length && c[j+1].phase===c[i].phase && c[j+1].sign===c[i].sign && c[j+1].go===c[j].go+1) j++;
+    const rets=c.slice(i,j+1).map(x=>x.ret).reverse();
+    for(let k=i;k<=j;k++) c[k]=Object.assign({}, c[k], {ret:rets[k-i]});
+    i=j+1;
+  }
+  return c;
+}
+
 /** Spulenliste + Schichtbelegung je Nut. */
-function buildCoils(Q, poles, layers, y, zoneWidth){
+function buildCoils(Q, poles, layers, y, zoneWidth, concentric){
   const slots = slotAssignments(Q, poles, zoneWidth);
-  const coils = [];           // {phase, sign, go, ret}
+  let coils = [];           // {phase, sign, go, ret}
   const top = new Array(Q).fill(null);   // Oberschicht je Nut {phase,sign}
   const bot = new Array(Q).fill(null);   // Unterschicht je Nut {phase,sign}
   if(layers === 2){
     for(let k=0;k<Q;k++){
       const s = slots[k];
-      const ret = (k+y)%Q;
-      coils.push({phase:s.phase, sign:s.sign, go:k, ret});
+      coils.push({phase:s.phase, sign:s.sign, go:k, ret:(k+y)%Q});
       top[k] = {phase:s.phase, sign:s.sign};
     }
     // Unterschicht = Ruecklauf der Spule aus Nut (k-y)
@@ -469,6 +489,7 @@ function buildCoils(Q, poles, layers, y, zoneWidth){
       }
     }
   }
+  if(concentric) coils = concentricRewire(coils, Q);
   return {coils, top, bot, slots};
 }
 
@@ -561,7 +582,7 @@ function computeModel(st){
   if(!y || y<1) y = Math.max(1, round(params.tau_p));
   y = Math.min(Math.max(1,y), Q-1);
   const wf = windingFactors(Q, poles, y, st.zoneWidth);
-  const {coils, top, bot, slots} = buildCoils(Q, poles, layers, y, st.zoneWidth);
+  const {coils, top, bot, slots} = buildCoils(Q, poles, layers, y, st.zoneWidth, st.concentric);
   const coilsPerPhase = coils.filter(c=>c.phase==='U').length;
   const aMax = maxParallel(Q, poles, layers);
   const aParallel = divisors(aMax).includes(st.parallel) ? st.parallel : 1;   // nur gueltige Teiler
@@ -590,6 +611,7 @@ function phColor(ph){ return PHASE_COLOR[ph]; }
 /* --- Wickelschema (abgewickelt, verfolgbar) --- */
 let SCHEMA_VIEW='overview';   // 'overview' | 'tracks'
 let SCHEMA_FILTER='all';      // 'all' | 'U' | 'V' | 'W'
+let COIL_CONCENTRIC=false;    // false=Schleife (gleiche Weite), true=konzentrisch (ungleiche Weite)
 const TERM={U:['U1','U2'], V:['V1','V2'], W:['W1','W2']};
 
 /** Spulen eines Strangs in Verschaltungs-Reihenfolge (nach Hinleiter-Nut). */
@@ -637,19 +659,23 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   const leftB=x0, rightB=x0+Q*dx, W=rightB-leftB;
   const line=(d,w,op)=> svg.appendChild(el('path',{d,fill:'none',stroke:col,
     'stroke-width':w,'stroke-linejoin':'round','stroke-linecap':'round',opacity:op==null?1:op}));
-  const apx=Math.max(Math.min(barTop-frontTop, backBot-barBot)-14, 12);  // gleiche Schenkellaenge oben/unten
-  const hAt=(p,mid)=> Math.max(0, apx*(1 - Math.abs(p-mid)/(y/2)));
-  // Stirnkopf go->go+y, ueber (dir=-1) oder unter (dir=+1) der Nut; mit Rand-Durchlauf
+  const apxMax=Math.max(Math.min(barTop-frontTop, backBot-barBot)-14, 12);
+  const spans=series.map(c=>((c.ret-c.go)%Q+Q)%Q);
+  const spanRef=Math.max(1, ...spans);
+  const apxFor=span=> Math.max(8, apxMax*span/spanRef);   // Hoehe proportional zur Spulenweite -> verschachtelt bei konzentrisch
+  const hAt=(p,mid,a,span)=> Math.max(0, a*(1 - Math.abs(p-mid)/(span/2)));
+  // Stirnkopf go->ret (tatsaechliche Weite), ueber (dir=-1) oder unter (dir=+1) der Nut; mit Rand-Durchlauf
   function head(c, baseY, dir){
-    const g=c.go, rLog=g+y, mid=g+y/2;
-    const sx=xG(g), ex=xR(c.ret), peakY=baseY+dir*apx;
+    const g=c.go, span=((c.ret-g)%Q+Q)%Q, a=apxFor(span);
+    const rLog=g+span, mid=g+span/2;
+    const sx=xG(g), ex=xR(c.ret), peakY=baseY+dir*a;
     let lx;
     if(rLog < Q){
       const mx=xN(mid);
       line(`M ${sx} ${baseY} L ${mx} ${peakY} L ${ex} ${baseY}`, 2.4);
       lx=mx;
     } else {
-      const hE=hAt(Q, mid);
+      const hE=hAt(Q, mid, a, span);
       let pr=`M ${sx} ${baseY}`;
       if(mid<Q) pr+=` L ${xN(mid)} ${peakY}`;
       pr+=` L ${rightB} ${baseY+dir*hE}`;
@@ -660,26 +686,25 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
       line(pl,2.4);
       lx = mid<Q ? xN(mid) : xN(mid-Q);
     }
-    return lx;
+    return {x:lx, a};
   }
   const tips=[];
   series.forEach((c,i)=>{
-    const lx=head(c, barTop, -1);    // vorderer Stirnkopf (oben)
+    const h=head(c, barTop, -1);     // vorderer Stirnkopf (oben)
     head(c, barBot, +1);             // hinterer Stirnkopf (unten) -> geschlossene Spule
-    tips.push(lx);
-    const ly=barTop-apx;             // Spulennummer am oberen Scheitel
-    svg.appendChild(el('circle',{cx:lx,cy:ly,r:8,fill:'#fff',stroke:col,'stroke-width':1.3}));
-    svg.appendChild(el('text',{x:lx,y:ly+3.5,'text-anchor':'middle','font-size':9.5,fill:col,'font-weight':700}, i+1));
+    tips.push(h);
+    const ly=barTop-h.a;             // Spulennummer am oberen Scheitel
+    svg.appendChild(el('circle',{cx:h.x,cy:ly,r:8,fill:'#fff',stroke:col,'stroke-width':1.3}));
+    svg.appendChild(el('text',{x:h.x,y:ly+3.5,'text-anchor':'middle','font-size':9.5,fill:col,'font-weight':700}, i+1));
   });
   // Schaltverbindung: jeder Strang auf eigener Hoehen-Ebene (im Gesamt-Modus getrennt, keine Ueberlappung)
   const phaseIdx=(SCHEMA_FILTER==='all')?PHASES.indexOf(ph):0;
-  const wireY=barBot+apx+14+phaseIdx*24;
-  tips.forEach(x=> line(`M ${x} ${barBot+apx} L ${x} ${wireY}`, 1.4, 0.5));   // Stich von Spulenspitze zur Strang-Ebene
+  const wireY=barBot+apxMax+14+phaseIdx*24;
+  tips.forEach(t=> line(`M ${t.x} ${barBot+t.a} L ${t.x} ${wireY}`, 1.4, 0.5));   // Stich von Spulenspitze zur Strang-Ebene
   for(let i=0;i<tips.length-1;i++){
-    const xa=tips[i], xb=tips[i+1];
+    const xa=tips[i].x, xb=tips[i+1].x;
     line(`M ${xa} ${wireY} Q ${(xa+xb)/2} ${wireY+12} ${xb} ${wireY}`, 2.8);  // Reihen-Verbindung Spule i -> i+1
   }
-  model._tips = model._tips || {}; model._tips[ph] = {first:tips[0], last:tips[tips.length-1], wireY, backBot};
   // Klemmen-Ausfuehrungen U1/U2 an den Enden der Kette
   const term=(x,label)=>{
     line(`M ${x} ${wireY} L ${x} ${backBot}`, 2.2);
@@ -687,8 +712,8 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     svg.appendChild(el('text',{x:x,y:backBot+17,'text-anchor':'middle','font-size':11.5,
       fill:col,'font-weight':700},label));
   };
-  term(tips[0], TERM[ph][0]);
-  term(tips[tips.length-1], TERM[ph][1]);
+  term(tips[0].x, TERM[ph][0]);
+  term(tips[tips.length-1].x, TERM[ph][1]);
 }
 
 function renderSchema(model){
@@ -951,6 +976,7 @@ function readState(){
     parallel: Math.max(1,Math.round(+v('parallel'))),
     connection: v('connection'),
     dahlander: v('dahlander')==='1',
+    concentric: COIL_CONCENTRIC,
     pitch,
   };
 }
@@ -1243,6 +1269,12 @@ function bind(){
     SCHEMA_FILTER=b.dataset.ph;
     [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
     if(CURRENT) renderSchema(CURRENT);
+  });
+  document.getElementById('coilSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    COIL_CONCENTRIC=b.dataset.conc==='1';
+    [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
+    refresh(false);   // Spulenform aendert das Modell (coils) -> neu berechnen
   });
 }
 
