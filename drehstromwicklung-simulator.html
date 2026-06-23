@@ -692,26 +692,25 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   series.forEach((c,i)=>{
     const h=head(c, barTop, -1);     // vorderer Stirnkopf (oben)
     head(c, barBot, +1);             // hinterer Stirnkopf (unten) -> geschlossene Spule
-    tips.push(h);
+    tips.push({mid:h.x, a:h.a, rx:xR(c.ret)});   // Scheitel (mid) + rechte Spulenseite (ret)
     const ly=barTop-h.a;             // Spulennummer am oberen Scheitel
     svg.appendChild(el('circle',{cx:h.x,cy:ly,r:8,fill:'#fff',stroke:col,'stroke-width':1.3}));
     svg.appendChild(el('text',{x:h.x,y:ly+3.5,'text-anchor':'middle','font-size':9.5,fill:col,'font-weight':700}, i+1));
   });
-  // Uebergaenge (B): direkt zwischen den unteren Spulenspitzen, Scheitel im rechten Teil,
-  // knapp unter den Spitzen (im Wickelkopf-Bereich, nicht auf eigener Ebene ganz unten); je Strang gestaffelt
+  // Uebergaenge (B): an der RECHTEN Spulenseite (ret), im oberen Teil des Wickelkopfs
+  // (deutlich hoeher als die Dach-Spitzen, nicht unten gequetscht); je Strang gestaffelt
   const phaseIdx=(SCHEMA_FILTER==='all')?PHASES.indexOf(ph):0;
+  const linkY=barBot + apxMax*0.42 + phaseIdx*26;        // Verschaltungsebene rechts, im Wickelkopf
+  tips.forEach(t=> line(`M ${t.rx} ${barBot} L ${t.rx} ${linkY.toFixed(1)}`, 1.4, 0.5));   // kurzer Stich an der ret-Seite herab
   for(let i=0;i<tips.length-1;i++){
-    const a=tips[i], b=tips[i+1];
-    const sy=barBot+a.a, ey=barBot+b.a;
-    const cx=a.x*0.3 + b.x*0.7;                        // Scheitel im rechten Teil des Uebergangs
-    const cy=Math.max(sy,ey)+12+phaseIdx*16;           // etwas hoeher als ganz unten, Straenge getrennt
-    line(`M ${a.x} ${sy} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x} ${ey}`, 2.6);
+    const a=tips[i].rx, b=tips[i+1].rx;
+    line(`M ${a} ${linkY.toFixed(1)} Q ${((a+b)/2).toFixed(1)} ${(linkY+16).toFixed(1)} ${b} ${linkY.toFixed(1)}`, 2.6);  // Reihen-Verbindung
   }
-  // Klemmen U1/U2 an den Enden der Kette
+  // Klemmen U1/U2 an den Enden der Kette (an der rechten Spulenseite)
   const term=(t,label)=>{
-    line(`M ${t.x} ${barBot+t.a} L ${t.x} ${backBot}`, 2.0, 0.85);
-    svg.appendChild(el('circle',{cx:t.x,cy:backBot,r:5.5,fill:col,stroke:'#fff','stroke-width':1.5}));
-    svg.appendChild(el('text',{x:t.x,y:backBot+17,'text-anchor':'middle','font-size':11.5,
+    line(`M ${t.rx} ${linkY.toFixed(1)} L ${t.rx} ${backBot}`, 2.0, 0.85);
+    svg.appendChild(el('circle',{cx:t.rx,cy:backBot,r:5.5,fill:col,stroke:'#fff','stroke-width':1.5}));
+    svg.appendChild(el('text',{x:t.rx,y:backBot+17,'text-anchor':'middle','font-size':11.5,
       fill:col,'font-weight':700},label));
   };
   term(tips[0], TERM[ph][0]);
