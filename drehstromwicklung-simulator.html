@@ -131,8 +131,8 @@
         </div>
         <div class="wsel-row wsel-motor">
           <span class="lbl">Motor-Assistent (50 Hz):</span>
-          <label>Nuten <input id="selMotorQ" type="number" min="6" max="48" value="36"></label>
-          <label>Drehzahl <input id="selMotorRpm" type="number" min="100" max="3600" step="50" value="1400"> min⁻¹</label>
+          <label>Nuten <select id="selMotorQ"></select></label>
+          <label>Drehzahl <select id="selMotorRpm"></select> min⁻¹</label>
           <button id="selMotorGo">Wicklung vorschlagen</button>
           <span id="selMotorResult" class="note"></span>
         </div>
@@ -145,11 +145,11 @@
       <div class="controls">
         <div class="field">
           <label for="Q">Nutenzahl Q</label>
-          <input id="Q" type="number" min="3" max="120" step="1" value="36">
+          <select id="Q"></select>
         </div>
         <div class="field">
-          <label for="poles">Polzahl 2p</label>
-          <input id="poles" type="number" min="2" max="48" step="2" value="4">
+          <label for="poles">Polzahl 2p · Drehzahl</label>
+          <select id="poles"></select>
         </div>
         <div class="field">
           <label for="layers">Schichtzahl</label>
@@ -327,6 +327,7 @@ const PHASES = ['U','V','W'];
 const PHASE_COLOR = {U:'#e23b50', V:'#1f9d55', W:'#2563eb'};
 const M = 3;                       // Straenge (Drehstrom)
 const NU_LIST = [1,3,5,7,9,11,13]; // betrachtete Oberwellen
+const SLOT_NUMBERS = [12,18,24,36,48];   // fest definierte Nutenzahlen
 
 let PRESETS = [];   // wird in buildPresets() erzeugt (kuratierte Beispiele + alle symmetrischen Wicklungen)
 
@@ -998,7 +999,7 @@ function buildPresets(){
   list.push({group:'★ Beispiele', name:'1400 min⁻¹ · 36/4 · Zweischicht', Q:36, poles:4, layers:2, type:'distributed'});
   list.push({group:'★ Beispiele', name:'2900 min⁻¹ · 24/2 · Einschicht', Q:24, poles:2, layers:1, type:'distributed'});
   list.push({group:'★ Beispiele', name:'Zahnspule · 12/10', Q:12, poles:10, layers:2, type:'toothcoil'});
-  for(let Q=12;Q<=48;Q++){
+  for(const Q of SLOT_NUMBERS){                       // feste Nutenzahlen
     for(let poles=2;poles<=Q-2;poles+=2){
       const p=poles/2, t=gcd(Q,p);
       if((Q/t)%M!==0) continue;                       // nur symmetrische Drehstromwicklungen
@@ -1020,10 +1021,39 @@ function fillPresets(){
     const o=document.createElement('option'); o.value=String(i); o.textContent=presetLabel(p); og.appendChild(o);
   });
 }
+/* feste Nutenzahl-Dropdowns (Eingabe + Motor-Assistent) */
+function fillSlotOptions(){
+  const opt=SLOT_NUMBERS.map(q=>`<option value="${q}">${q}</option>`).join('');
+  document.getElementById('Q').innerHTML=opt;
+  document.getElementById('selMotorQ').innerHTML=opt;
+  document.getElementById('Q').value='36';
+  document.getElementById('selMotorQ').value='36';
+}
+/* Polzahl-Dropdown: nur realisierbare Polzahlen fuer dieses Q, mit Synchrondrehzahl */
+function fillPolesOptions(Q, keep){
+  const sel=document.getElementById('poles');
+  const want=keep!=null?keep:+sel.value;
+  let opts='';
+  for(let poles=2;poles<=Q-2;poles+=2){
+    const p=poles/2, t=gcd(Q,p);
+    if((Q/t)%M!==0) continue;
+    opts+=`<option value="${poles}">${poles} · ${(6000/poles).toFixed(0)} min⁻¹</option>`;
+  }
+  sel.innerHTML=opts;
+  if([...sel.options].some(o=>+o.value===want)) sel.value=String(want);
+}
+/* Drehzahl-Dropdown: nur vorkommende Synchrondrehzahlen (3000/1500/1000/750/...) */
+function fillSpeedOptions(){
+  const speeds=[...new Set(PRESETS.filter(p=>!p.name).map(p=>Math.round(6000/p.poles)))].sort((a,b)=>b-a);
+  document.getElementById('selMotorRpm').innerHTML=speeds.map(n=>`<option value="${n}">${n}</option>`).join('');
+  document.getElementById('selMotorRpm').value='1500';
+}
+
 function applyPreset(){
   const p=PRESETS[+v('preset')];
-  document.getElementById('Q').value=p.Q;
-  document.getElementById('poles').value=p.poles;
+  document.getElementById('Q').value=String(p.Q);
+  fillPolesOptions(p.Q, p.poles);
+  document.getElementById('poles').value=String(p.poles);
   document.getElementById('layers').value=p.layers;
   document.getElementById('type').value=p.type||'distributed';
   document.getElementById('dahlander').value=p.dahlander?'1':'0';
@@ -1131,8 +1161,9 @@ function loadFromHash(){
   if(!location.hash) return false;
   try{
     const st=JSON.parse(decodeURIComponent(location.hash.slice(1)));
-    document.getElementById('Q').value=st.Q;
-    document.getElementById('poles').value=st.poles;
+    document.getElementById('Q').value=String(st.Q);
+    fillPolesOptions(st.Q, st.poles);
+    document.getElementById('poles').value=String(st.poles);
     document.getElementById('layers').value=st.layers;
     document.getElementById('type').value=st.type;
     document.getElementById('zoneWidth').value=st.zoneWidth;
@@ -1145,7 +1176,8 @@ function loadFromHash(){
 }
 
 function bind(){
-  ['Q','poles','layers','type','zoneWidth','parallel','connection','dahlander']
+  document.getElementById('Q').addEventListener('change',()=>{ fillPolesOptions(+v('Q')); refresh(true); });
+  ['poles','layers','type','zoneWidth','parallel','connection','dahlander']
     .forEach(id=>document.getElementById(id).addEventListener('change',()=>refresh(true)));
   ['U','f','P','eta','J','Bd','D','L','An']
     .forEach(id=>document.getElementById(id).addEventListener('input',()=>{ if(CURRENT) renderWire(CURRENT); }));
@@ -1230,6 +1262,9 @@ function runSelfTest(){
 /* ------------------------------ INIT ------------------------------- */
 window.addEventListener('DOMContentLoaded',()=>{
   buildPresets();
+  fillSlotOptions();
+  fillPolesOptions(36, 4);
+  fillSpeedOptions();
   fillPresets();
   initSelector();
   bind();
