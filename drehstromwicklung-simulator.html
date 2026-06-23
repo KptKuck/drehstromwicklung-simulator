@@ -569,8 +569,7 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   const leftB=x0, rightB=x0+Q*dx, W=rightB-leftB;
   const line=(d,w,op)=> svg.appendChild(el('path',{d,fill:'none',stroke:col,
     'stroke-width':w,'stroke-linejoin':'round','stroke-linecap':'round',opacity:op==null?1:op}));
-  const yEff=Math.min(y, Q-y);
-  const apx=Math.min(barTop-frontTop-8, 24 + yEff*3.4);
+  const apx=Math.max(barTop-frontTop-16, 12);   // Schenkel nutzen den vollen Wickelkopf-Bereich
   const hAt=(p,mid)=> Math.max(0, apx*(1 - Math.abs(p-mid)/(y/2)));
   series.forEach((c,i)=>{
     const g=c.go, rLog=g+y, mid=g+y/2;
@@ -599,7 +598,7 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   // Reihenschaltung (unten): Austritt Spule i -> Eintritt Spule i+1, auch mit Rand-Durchlauf
   const inX=c=> c.sign>0 ? xG(c.go) : xR(c.ret);
   const outX=c=> c.sign>0 ? xR(c.ret) : xG(c.go);
-  const apxB=Math.min(backBot-barBot-8, 24);
+  const apxB=Math.max(backBot-barBot-22, 12);
   for(let i=0;i<series.length-1;i++){
     const xa=outX(series[i]), xb=inX(series[i+1]), dd=xb-xa;
     if(Math.abs(dd) <= W/2){
@@ -630,8 +629,8 @@ function renderSchema(model){
   const lbl=`Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
   if(SCHEMA_VIEW==='tracks'){
     const dx=Math.max(32, Math.min(62, 1300/Q));
-    const padL=56, padR=30, titleH=32, trackH=368;
-    const frontSpan=140, barH=52, backSpan=176;
+    const padL=56, padR=30, titleH=32, trackH=246;
+    const frontSpan=90, barH=52, backSpan=104;
     const Wd=padL+padR+Q*dx, H=titleH+3*trackH+14;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
@@ -639,7 +638,7 @@ function renderSchema(model){
     PHASES.forEach((ph,ti)=>{
       const top=titleH+ti*trackH;
       const barTop=top+frontSpan, barBot=barTop+barH;
-      const frontTop=top+6, backBot=barBot+backSpan-18;
+      const frontTop=top+6, backBot=barBot+backSpan-26;
       svg.appendChild(el('text',{x:padL-12,y:(barTop+barBot)/2+5,'text-anchor':'end',
         'font-size':14,fill:phColor(ph),'font-weight':700},ph));
       drawIron(svg, padL, dx, Q, barTop, barBot);
@@ -650,9 +649,9 @@ function renderSchema(model){
     const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
     const dx=Math.max(36, Math.min(72, 1500/Q));
     const padL=56, padR=30, titleH=30;
-    const frontSpan=208, barH=96, backSpan=232;
+    const frontSpan=150, barH=96, backSpan=150;
     const barTop=titleH+frontSpan, barBot=barTop+barH;
-    const frontTop=titleH+6, backBot=barBot+backSpan-18;
+    const frontTop=titleH+6, backBot=barBot+backSpan-26;
     const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
