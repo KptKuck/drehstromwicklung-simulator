@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drehstromwicklungs-Simulator</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --ink:#1f2733; --muted:#5b6675;
+    --line:#d8dee7; --accent:#2563eb; --warn:#b45309; --bad:#b91c1c; --ok:#15803d;
+    --U:#e23b50; --V:#1f9d55; --W:#2563eb;
+    --shadow:0 1px 3px rgba(16,24,40,.08),0 1px 2px rgba(16,24,40,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.45}
+  header{background:linear-gradient(180deg,#0f172a,#1e293b);color:#fff;padding:14px 20px;
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:650;letter-spacing:.2px}
+  header .sub{color:#9fb0c7;font-size:12.5px}
+  .wrap{max-width:1280px;margin:0 auto;padding:18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
+  .card>h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+    margin:0;padding:11px 14px;border-bottom:1px solid var(--line);background:#fbfcfe}
+  .card>.body{padding:14px}
+  /* controls */
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11.5px;color:var(--muted);font-weight:600}
+  .field input,.field select{padding:7px 8px;border:1px solid var(--line);border-radius:7px;
+    background:#fff;font-size:13.5px;color:var(--ink)}
+  .field input:focus,.field select:focus{outline:2px solid #bfdbfe;border-color:var(--accent)}
+  .field .hint{font-size:10.5px;color:var(--muted)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .pitchrow{display:flex;align-items:center;gap:10px}
+  .pitchrow input[type=range]{flex:1}
+  button{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:7px;
+    padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink)}
+  button:hover{background:#f1f5f9}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{background:#1d4ed8}
+  /* kpis */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+  .kpi{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+  .kpi .k{font-size:11px;color:var(--muted);font-weight:600}
+  .kpi .v{font-size:18px;font-weight:700;margin-top:2px}
+  .kpi .u{font-size:11px;color:var(--muted)}
+  /* messages */
+  .msg{padding:9px 12px;border-radius:8px;margin-bottom:10px;font-size:13px;border:1px solid}
+  .msg.warn{background:#fffbeb;border-color:#fcd34d;color:var(--warn)}
+  .msg.bad{background:#fef2f2;border-color:#fca5a5;color:var(--bad)}
+  .msg.ok{background:#f0fdf4;border-color:#86efac;color:var(--ok)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12.5px}
+  .legend .sw{display:inline-flex;align-items:center;gap:6px}
+  .legend .dot{width:13px;height:13px;border-radius:3px;display:inline-block}
+  svg{display:block;width:100%;height:auto;background:#fff}
+  .svg-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:880px){.grid2{grid-template-columns:1fr}}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:4px 7px;text-align:center}
+  th{background:#f8fafc;color:var(--muted);font-weight:600;position:sticky;top:0}
+  .tbl-scroll{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .ph-U{color:var(--U);font-weight:700}.ph-V{color:var(--V);font-weight:700}.ph-W{color:var(--W);font-weight:700}
+  .anim-ctl{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .note{font-size:11.5px;color:var(--muted);margin-top:8px}
+  #selftest{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
+  .pass{color:var(--ok)}.fail{color:var(--bad);font-weight:700}
+  @media print{
+    header,.controls-card,.anim-ctl,.no-print,button{display:none!important}
+    .card{break-inside:avoid;box-shadow:none}
+    body{background:#fff}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Drehstromwicklungs-Simulator</h1>
+  <span class="sub">Ein- &amp; Zweischicht · Ganz-/Bruchloch · Zahnspulen · Dahlander · Wickelschema · Nutenstern · Wicklungsfaktor · MMK/Drehfeld</span>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ CONTROLS ============ -->
+  <div class="card controls-card">
+    <h2>Eingabe</h2>
+    <div class="body">
+      <div class="row" style="margin-bottom:12px">
+        <div class="field" style="min-width:260px;flex:1">
+          <label for="preset">Vorlage (Preset)</label>
+          <select id="preset"></select>
+        </div>
+        <button id="applyPreset" class="primary">Preset laden</button>
+      </div>
+      <div class="controls">
+        <div class="field">
+          <label for="Q">Nutenzahl Q</label>
+          <input id="Q" type="number" min="3" max="120" step="1" value="36">
+        </div>
+        <div class="field">
+          <label for="poles">Polzahl 2p</label>
+          <input id="poles" type="number" min="2" max="48" step="2" value="4">
+        </div>
+        <div class="field">
+          <label for="layers">Schichtzahl</label>
+          <select id="layers">
+            <option value="1">Einschicht</option>
+            <option value="2" selected>Zweischicht</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="type">Wicklungstyp</label>
+          <select id="type">
+            <option value="distributed" selected>verteilt</option>
+            <option value="toothcoil">Zahnspule</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="zoneWidth">Zonenbreite</label>
+          <select id="zoneWidth">
+            <option value="60" selected>60&deg; (Standard)</option>
+            <option value="120">120&deg;</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="parallel">Parallele Zweige a</label>
+          <input id="parallel" type="number" min="1" max="24" step="1" value="1">
+        </div>
+        <div class="field">
+          <label for="connection">Schaltung</label>
+          <select id="connection">
+            <option value="Y" selected>Stern (Y)</option>
+            <option value="D">Dreieck (&Delta;)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="dahlander">Dahlander (polumschaltbar)</label>
+          <select id="dahlander">
+            <option value="0" selected>nein</option>
+            <option value="1">ja</option>
+          </select>
+        </div>
+      </div>
+      <div class="pitchrow" style="margin-top:12px">
+        <span class="field" style="min-width:170px"><label for="pitch">Wicklungsschritt y (Nuten)</label></span>
+        <input id="pitch" type="range" min="1" max="35" step="1" value="9">
+        <span id="pitchVal" style="font-weight:700;min-width:120px"></span>
+        <button id="autoPitch">Auto (Durchmesser)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="messages"></div>
+
+  <!-- ============ KPIs ============ -->
+  <div class="card">
+    <h2>Kennwerte</h2>
+    <div class="body"><div class="kpis" id="kpis"></div></div>
+  </div>
+
+  <!-- ============ SCHEMA ============ -->
+  <div class="card">
+    <h2>Wickelschema (abgewickelt)</h2>
+    <div class="body">
+      <div class="legend" id="legend"></div>
+      <div class="svg-scroll"><svg id="schema"></svg></div>
+      <div class="note">Spulenseiten farbig nach Strang. Pfeile = Stromrichtung im Referenzzeitpunkt (&omega;t = 0). Bei Zweischicht: Oberschicht oben, Unterschicht unten.</div>
+    </div>
+  </div>
+
+  <!-- ============ STAR + ZONE ============ -->
+  <div class="grid2">
+    <div class="card">
+      <h2>Nuten-/Spannungsstern</h2>
+      <div class="body"><svg id="star" viewBox="0 0 400 400"></svg>
+        <div class="note">EMK-Zeiger je Nut (elektrisch). Farbe = Strangzuordnung der Oberschicht.</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Oberwellen-Wicklungsfaktor</h2>
+      <div class="body"><svg id="harm" viewBox="0 0 400 300"></svg>
+        <div class="tbl-scroll" style="margin-top:10px;max-height:180px"><table id="harmTbl"></table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MMK / FIELD ============ -->
+  <div class="card">
+    <h2>MMK-Treppenkurve &amp; Drehfeld</h2>
+    <div class="body">
+      <div class="anim-ctl no-print">
+        <button id="playBtn" class="primary">&#9658; Start</button>
+        <label>Tempo <input id="speed" type="range" min="1" max="100" value="35" style="vertical-align:middle"></label>
+        <span id="phaseReadout" class="note"></span>
+      </div>
+      <div class="svg-scroll"><svg id="mmk"></svg></div>
+      <div class="note">Treppenkurve = Durchflutung (Ampere-Leiter, kumuliert) &uuml;ber dem Statorumfang. Gestrichelt = Grundwelle (p Polpaare). Bei Start rotiert das Feld.</div>
+    </div>
+  </div>
+
+  <!-- ============ ZONE PLAN TABLE ============ -->
+  <div class="card">
+    <h2>Zonenplan (Nutbelegung)</h2>
+    <div class="body"><div class="tbl-scroll"><table id="zoneTbl"></table></div></div>
+  </div>
+
+  <!-- ============ WIRE DESIGN ============ -->
+  <div class="card">
+    <h2>Drahtauslegung (N&auml;herung)</h2>
+    <div class="body">
+      <div class="controls" style="margin-bottom:12px">
+        <div class="field"><label for="U">Strangspannung U (V)</label><input id="U" type="number" value="230" step="1"></div>
+        <div class="field"><label for="f">Frequenz f (Hz)</label><input id="f" type="number" value="50" step="1"></div>
+        <div class="field"><label for="P">Leistung P (W)</label><input id="P" type="number" value="1500" step="50"></div>
+        <div class="field"><label for="eta">Wirkungsgrad &middot; cos&phi;</label><input id="eta" type="number" value="0.75" step="0.01"></div>
+        <div class="field"><label for="J">Stromdichte J (A/mm&sup2;)</label><input id="J" type="number" value="5" step="0.5"></div>
+        <div class="field"><label for="Bd">Luftspaltinduktion B&delta; (T)</label><input id="Bd" type="number" value="0.8" step="0.05"></div>
+        <div class="field"><label for="D">Bohrungs-&oslash; D (mm)</label><input id="D" type="number" value="80" step="1"></div>
+        <div class="field"><label for="L">Blechpaketl&auml;nge L (mm)</label><input id="L" type="number" value="100" step="1"></div>
+        <div class="field"><label for="An">Nutquerschnitt A&#8345; (mm&sup2;)</label><input id="An" type="number" value="80" step="1"></div>
+      </div>
+      <div class="kpis" id="wireKpis"></div>
+      <div class="note">Vereinfachte Auslegung &uuml;ber EMK-Gleichung U = 4,44&middot;f&middot;N&middot;k_w&middot;&Phi;. Ergebnisse sind Richtwerte, keine vollst&auml;ndige Maschinenauslegung.</div>
+    </div>
+  </div>
+
+  <!-- ============ DAHLANDER ============ -->
+  <div class="card" id="dahlanderCard" style="display:none">
+    <h2>Dahlander (Polumschaltung)</h2>
+    <div class="body"><div id="dahlanderBody"></div></div>
+  </div>
+
+  <!-- ============ WINDING INSTRUCTION ============ -->
+  <div class="card">
+    <h2>Wickelanleitung</h2>
+    <div class="body">
+      <div class="row no-print" style="margin-bottom:10px">
+        <button id="printBtn">Drucken</button>
+        <button id="exportJson">Konfiguration exportieren (JSON)</button>
+        <button id="copyLink">Teil-Link kopieren</button>
+      </div>
+      <div class="tbl-scroll"><table id="coilTbl"></table></div>
+    </div>
+  </div>
+
+  <!-- ============ SELFTEST ============ -->
+  <div class="card no-print" id="selftestCard" style="display:none">
+    <h2>Selbsttest</h2>
+    <div class="body"><div id="selftest"></div></div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+/* =====================================================================
+   DREHSTROMWICKLUNGS-SIMULATOR  --  reine Berechnung + SVG-Renderer
+   Abschnitte: CONFIG | ENGINE | RENDER | UI/CONTROLLER | TESTS
+   ===================================================================== */
+
+/* ----------------------------- CONFIG ------------------------------ */
+const PHASES = ['U','V','W'];
+const PHASE_COLOR = {U:'#e23b50', V:'#1f9d55', W:'#2563eb'};
+const M = 3;                       // Straenge (Drehstrom)
+const NU_LIST = [1,3,5,7,9,11,13]; // betrachtete Oberwellen
+
+const PRESETS = [
+  {name:'1400 min⁻¹ · 24/4 · Einschicht',  Q:24, poles:4, layers:1, type:'distributed'},
+  {name:'1400 min⁻¹ · 36/4 · Zweischicht',  Q:36, poles:4, layers:2, type:'distributed'},
+  {name:'1400 min⁻¹ · 48/4 · Zweischicht',  Q:48, poles:4, layers:2, type:'distributed'},
+  {name:'2900 min⁻¹ · 24/2 · Einschicht',   Q:24, poles:2, layers:1, type:'distributed'},
+  {name:'2900 min⁻¹ · 36/2 · Zweischicht',  Q:36, poles:2, layers:2, type:'distributed'},
+  {name:'2900 min⁻¹ · 18/2 · Zweischicht',  Q:18, poles:2, layers:2, type:'distributed'},
+  {name:'Dahlander · 24/4-2 · polumschaltbar', Q:24, poles:4, layers:2, type:'distributed', dahlander:true},
+  {name:'Zahnspule · 12/10 · Zweischicht',  Q:12, poles:10, layers:2, type:'toothcoil'},
+];
+
+/* ----------------------------- ENGINE ------------------------------ */
+const D2R = Math.PI/180;
+function gcd(a,b){ a=Math.abs(a); b=Math.abs(b); while(b){ [a,b]=[b,a%b]; } return a; }
+function fmt(x,d=3){ if(!isFinite(x)) return '–'; return Number(x).toFixed(d); }
+function round(x){ return Math.round(x); }
+
+/* 60deg-Phasenband: el. Winkel -> {phase, sign} */
+function beltAssign(angleDeg, zoneWidth){
+  let a = ((angleDeg % 360) + 360) % 360;
+  if(zoneWidth === 120){
+    // 120deg-Zone: 3 Sektoren je 120deg, kein gegenpoliger Sektor
+    const z = Math.floor(a/120) % 3;         // 0..2
+    return {phase: PHASES[z], sign:+1};
+  }
+  // 60deg-Band, Reihenfolge U+, W-, V+, U-, W+, V-
+  const seq = [
+    {phase:'U', sign:+1}, {phase:'W', sign:-1}, {phase:'V', sign:+1},
+    {phase:'U', sign:-1}, {phase:'W', sign:+1}, {phase:'V', sign:-1},
+  ];
+  return seq[Math.floor(a/60) % 6];
+}
+
+/** Grundparameter der Wicklung. */
+function windingParams(Q, poles){
+  const p = poles/2;
+  const q = Q/(poles*M);
+  const tau_p = Q/poles;
+  const alpha = 360*p/Q;            // el. Nutwinkel
+  const t = gcd(Q, p);             // Symmetriezahl
+  // q als Bruch b + z/n (gekuerzt)
+  const qNum = Q, qDen = poles*M;
+  const g = gcd(qNum, qDen);
+  return {p, q, tau_p, alpha, t, qFrac:{num:qNum/g, den:qDen/g}, integer: Number.isInteger(q)};
+}
+
+/** Strangzeiger der Oberschicht je Nut (Slot-Star). */
+function slotAssignments(Q, poles, zoneWidth){
+  const {alpha} = windingParams(Q, poles);
+  const out = [];
+  for(let k=0;k<Q;k++){
+    const ang = k*alpha;                       // el. Winkel
+    const b = beltAssign(ang, zoneWidth);
+    out.push({slot:k, angle:((ang%360)+360)%360, phase:b.phase, sign:b.sign});
+  }
+  return out;
+}
+
+/** Wicklungsfaktor je Oberwelle ueber Zeigersumme + Sehnungsfaktor. */
+function windingFactors(Q, poles, y, zoneWidth){
+  const {alpha, tau_p} = windingParams(Q, poles);
+  const slots = slotAssignments(Q, poles, zoneWidth);
+  const res = {};
+  for(const nu of NU_LIST){
+    // kd je Strang ueber Zeigersumme (Vorzeichen beruecksichtigt)
+    let kdU;
+    const sumByPhase = {};
+    const cntByPhase = {};
+    for(const ph of PHASES){ sumByPhase[ph]={re:0,im:0}; cntByPhase[ph]=0; }
+    for(const s of slots){
+      const a = nu*s.slot*alpha*D2R;
+      sumByPhase[s.phase].re += s.sign*Math.cos(a);
+      sumByPhase[s.phase].im += s.sign*Math.sin(a);
+      cntByPhase[s.phase]++;
+    }
+    // kd aus Strang U (symmetrisch fuer alle gleich); Mittelung zur Robustheit
+    let kdAvg=0, used=0;
+    for(const ph of PHASES){
+      const v=sumByPhase[ph], n=cntByPhase[ph];
+      if(n>0){ kdAvg += Math.hypot(v.re,v.im)/n; used++; }
+    }
+    const kd = used? kdAvg/used : 0;
+    const kp = Math.abs(Math.sin(nu*90*(y/tau_p)*D2R));
+    res[nu] = {kd, kp, kw: kd*kp};
+  }
+  return res;
+}
+
+/** Spulenliste + Schichtbelegung je Nut. */
+function buildCoils(Q, poles, layers, y, zoneWidth){
+  const slots = slotAssignments(Q, poles, zoneWidth);
+  const coils = [];           // {phase, sign, go, ret}
+  const top = new Array(Q).fill(null);   // Oberschicht je Nut {phase,sign}
+  const bot = new Array(Q).fill(null);   // Unterschicht je Nut {phase,sign}
+  if(layers === 2){
+    for(let k=0;k<Q;k++){
+      const s = slots[k];
+      const ret = (k+y)%Q;
+      coils.push({phase:s.phase, sign:s.sign, go:k, ret});
+      top[k] = {phase:s.phase, sign:s.sign};
+    }
+    // Unterschicht = Ruecklauf der Spule aus Nut (k-y)
+    for(let k=0;k<Q;k++){
+      const src = ((k-y)%Q+Q)%Q;
+      const s = slots[src];
+      bot[k] = {phase:s.phase, sign:-s.sign};
+    }
+  } else {
+    // Einschicht: nur '+' Nuten erzeugen Spulen
+    for(let k=0;k<Q;k++){
+      const s = slots[k];
+      top[k] = {phase:s.phase, sign:s.sign};   // eine Seite je Nut
+      if(s.sign > 0){
+        coils.push({phase:s.phase, sign:+1, go:k, ret:(k+y)%Q});
+      }
+    }
+  }
+  return {coils, top, bot, slots};
+}
+
+/** MMK-Treppenkurve zum Zeitpunkt wt (rad). Liefert {x[],y[],fund[]}. */
+function mmf(model, wt){
+  const {Q, layers, top, bot, params} = model;
+  const cur = {
+    U: Math.cos(wt),
+    V: Math.cos(wt - 2*Math.PI/3),
+    W: Math.cos(wt + 2*Math.PI/3),
+  };
+  // Ampere-Leiter je Nut
+  const slotMMF = new Array(Q).fill(0);
+  for(let k=0;k<Q;k++){
+    let v=0;
+    if(top[k]) v += top[k].sign*cur[top[k].phase];
+    if(layers===2 && bot[k]) v += bot[k].sign*cur[bot[k].phase];
+    slotMMF[k]=v;
+  }
+  // Kumulierte Durchflutung -> Treppe
+  const cum=new Array(Q+1).fill(0);
+  for(let k=0;k<Q;k++) cum[k+1]=cum[k]+slotMMF[k];
+  const mean = cum.reduce((a,b)=>a+b,0)/(Q+1);
+  for(let k=0;k<=Q;k++) cum[k]-=mean;
+  // Grundwelle (raeumliche Harmonische p) per DFT
+  const p = params.p;
+  let re=0, im=0;
+  for(let k=0;k<Q;k++){
+    const theta = 2*Math.PI*k/Q;
+    re += cum[k]*Math.cos(p*theta);
+    im += cum[k]*Math.sin(p*theta);
+  }
+  re*=2/Q; im*=2/Q;
+  const amp=Math.hypot(re,im), ph=Math.atan2(im,re);
+  return {cum, amp, ph, p};
+}
+
+/** Drahtauslegung (Naeherung). */
+function wireDesign(model, w){
+  const {params, kw1, coilsPerPhaseSeries} = model;
+  const Phi = w.Bd * (Math.PI*w.D*1e-3 * w.L*1e-3) / model.poles; // Wb
+  const N_phase = w.U / (4.44 * w.f * (kw1||1e-9) * Phi);          // Windungen/Strang (in Reihe)
+  const turnsPerCoil = N_phase / Math.max(1, coilsPerPhaseSeries);
+  const I_phase = w.P / (Math.sqrt(3) * w.U * Math.max(0.01,w.eta)); // grob (Y, verkettet~U*sqrt3) Richtwert
+  const A_cu = I_phase / (Math.max(1,w.parallel) * w.J);          // mm^2 je Leiter
+  const d = Math.sqrt(4*A_cu/Math.PI);                            // mm
+  const condsPerSlot = model.layers * turnsPerCoil;              // Leiter je Nut (Naeherung)
+  const fill = (condsPerSlot * A_cu) / Math.max(1e-9, w.An);
+  return {Phi, N_phase, turnsPerCoil, I_phase, A_cu, d, fill};
+}
+
+/** Symmetrie-/Realisierbarkeitspruefung. */
+function feasibility(Q, poles, layers, type){
+  const msgs=[];
+  const {q, t, integer} = windingParams(Q, poles);
+  if(Q % M !== 0){
+    msgs.push({lvl:'bad', txt:`Q = ${Q} ist nicht durch 3 teilbar – keine symmetrische Drehstromwicklung möglich.`});
+  }
+  if(layers===2 && Q % 2 !== 0){
+    msgs.push({lvl:'warn', txt:`Zweischicht mit ungerader Nutzahl Q = ${Q} ist unüblich.`});
+  }
+  // Bruchlochsymmetrie: Q/(t*M) ganzzahlig erforderlich
+  const qz = Q/(t*M);
+  if(!Number.isInteger(qz) && Q % M === 0){
+    msgs.push({lvl:'warn', txt:`Bruchlochwicklung q = ${fmt(q,3)} – ggf. unsymmetrische Zonenbelegung (t = ${t}).`});
+  }
+  if(!integer && Q % M === 0){
+    msgs.push({lvl:'warn', txt:`Bruchlochwicklung: q = ${fmt(q,3)} ist nicht ganzzahlig.`});
+  }
+  if(type==='toothcoil' && q>=1){
+    msgs.push({lvl:'warn', txt:`Zahnspule gewählt, aber q = ${fmt(q,3)} ≥ 1 – untypisch für konzentrierte Wicklung.`});
+  }
+  return msgs;
+}
+
+/** Gesamtmodell aus State. */
+function computeModel(st){
+  const Q=st.Q, poles=st.poles, layers=st.layers;
+  const params = windingParams(Q, poles);
+  let y = st.pitch;
+  if(!y || y<1) y = Math.max(1, round(params.tau_p));
+  y = Math.min(Math.max(1,y), Q-1);
+  const wf = windingFactors(Q, poles, y, st.zoneWidth);
+  const {coils, top, bot, slots} = buildCoils(Q, poles, layers, y, st.zoneWidth);
+  const coilsPerPhase = coils.filter(c=>c.phase==='U').length;
+  const coilsPerPhaseSeries = coilsPerPhase / Math.max(1, st.parallel);
+  const n_sync = 120*50/poles;
+  const model = {
+    st, Q, poles, layers, y, params, slots, coils, top, bot, wf,
+    kw1: wf[1].kw, kd1: wf[1].kd, kp1: wf[1].kp,
+    coilsPerPhase, coilsPerPhaseSeries, n_sync,
+  };
+  model.messages = feasibility(Q, poles, layers, st.type);
+  return model;
+}
+
+/* ----------------------------- RENDER ------------------------------ */
+const SVGNS='http://www.w3.org/2000/svg';
+function el(tag, attrs={}, text){
+  const e=document.createElementNS(SVGNS,tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  if(text!=null) e.textContent=text;
+  return e;
+}
+function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+function phColor(ph){ return PHASE_COLOR[ph]; }
+
+/* --- Wickelschema (abgewickelt) --- */
+function renderSchema(model){
+  const svg=document.getElementById('schema');
+  clear(svg);
+  const Q=model.Q, layers=model.layers;
+  const dx=Math.max(26, Math.min(46, 1100/Q));
+  const padL=46, padR=20, padT=70, slotH=120, padB=46;
+  const W=padL+padR+Q*dx, H=padT+slotH+padB;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  const xOf=k=>padL+(k+0.5)*dx;
+  const yTop=padT, yBot=padT+slotH;
+  // Eisen / Nutraster
+  svg.appendChild(el('rect',{x:padL-6,y:yTop-4,width:Q*dx+12,height:slotH+8,fill:'#f8fafc',stroke:'#e2e8f0'}));
+  for(let k=0;k<Q;k++){
+    const x=xOf(k);
+    svg.appendChild(el('line',{x1:x,y1:yTop,x2:x,y2:yBot,stroke:'#e6eaf0','stroke-width':1}));
+    svg.appendChild(el('text',{x:x,y:yBot+16,'text-anchor':'middle','font-size':11,fill:'#5b6675'}, (k+1)));
+  }
+  // Spulenseiten zeichnen
+  const sideY = (k, layer)=>{
+    // layer: 'top' oben, 'bot' unten, 'single' mittig
+    if(layer==='single') return [yTop+18, yBot-18];
+    if(layer==='top')    return [yTop+10, yTop+slotH*0.46];
+    return [yTop+slotH*0.54, yBot-10];
+  };
+  const drawSide=(k, layer, ph, sign)=>{
+    const x=xOf(k);
+    const [y1,y2]=sideY(k,layer);
+    svg.appendChild(el('rect',{x:x-5,y:y1,width:10,height:y2-y1,rx:2,
+      fill:phColor(ph),opacity:0.85}));
+    // Stromrichtungspfeil
+    const cy=(y1+y2)/2;
+    const up = sign>0;
+    const ay = up? y1+9 : y2-9;
+    const dir = up? -1: 1;
+    svg.appendChild(el('path',{d:`M ${x} ${ay+dir*6} L ${x-4} ${ay-dir*0} L ${x+4} ${ay-dir*0} Z`,
+      fill:'#fff'}));
+  };
+  // End-Verbindungen (Wickelkopf) je Spule
+  const coilColorByIndex=model.coils;
+  let hi=0;
+  for(const c of model.coils){
+    const x1=xOf(c.go), x2=xOf(c.ret);
+    const layA = layers===2?'top':'single';
+    const layB = layers===2?'bot':'single';
+    const [ya]=sideY(c.go,layA);
+    const top = padT-8 - (hi%4)*8;
+    hi++;
+    // Bogen oben verbindet go->ret
+    let xr=x2;
+    // bei Umlauf (ret<go) zeichne nach rechts ueber den Rand hinaus verkuerzt
+    const path=`M ${x1} ${ya} L ${x1} ${top} L ${xr} ${top} L ${xr} ${sideY(c.ret,layB)[0]}`;
+    svg.appendChild(el('path',{d:path,fill:'none',stroke:phColor(c.phase),
+      'stroke-width':1.4,opacity:0.55}));
+  }
+  // Schichtseiten
+  for(let k=0;k<Q;k++){
+    if(layers===2){
+      if(model.top[k]) drawSide(k,'top',model.top[k].phase,model.top[k].sign);
+      if(model.bot[k]) drawSide(k,'bot',model.bot[k].phase,model.bot[k].sign);
+    } else {
+      if(model.top[k]) drawSide(k,'single',model.top[k].phase,model.top[k].sign);
+    }
+  }
+  // Titelzeile
+  svg.appendChild(el('text',{x:padL,y:20,'font-size':12,fill:'#1f2733','font-weight':700},
+    `Q=${Q}, 2p=${model.poles}, y=${model.y}, ${layers===1?'Einschicht':'Zweischicht'}`));
+}
+
+/* --- Nutenstern --- */
+function renderStar(model){
+  const svg=document.getElementById('star');
+  clear(svg);
+  const cx=200, cy=200, R=150;
+  svg.appendChild(el('circle',{cx,cy,r:R,fill:'none',stroke:'#e2e8f0'}));
+  // Zonensektoren (nur visuell, 6 x 60)
+  for(let z=0;z<6;z++){
+    const a0=z*60, a1=(z+1)*60;
+    svg.appendChild(el('path',{d:sector(cx,cy,R,a0,a1),
+      fill:z%2?'#f8fafc':'#eef2f7',opacity:0.5,stroke:'none'}));
+  }
+  // Zaehl-Bucket fuer Mehrfachzeiger
+  const seen={};
+  for(const s of model.slots){
+    const a=s.angle;                 // el. Winkel (Grad)
+    const key=Math.round(a);
+    seen[key]=(seen[key]||0)+1;
+    const rr=R-(seen[key]-1)*14;     // gestapelte Mehrfachzeiger
+    const rad=(-a)*D2R;              // CCW, 0 rechts
+    const x=cx+rr*Math.cos(rad), y=cy+rr*Math.sin(rad);
+    svg.appendChild(el('line',{x1:cx,y1:cy,x2:x,y2:y,stroke:phColor(s.phase),
+      'stroke-width':1.8,opacity:0.9}));
+    svg.appendChild(el('circle',{cx:x,cy:y,r:3,fill:phColor(s.phase)}));
+    const lx=cx+(rr+12)*Math.cos(rad), ly=cy+(rr+12)*Math.sin(rad);
+    svg.appendChild(el('text',{x:lx,y:ly+3,'text-anchor':'middle','font-size':9.5,
+      fill:'#334155'}, s.slot+1));
+  }
+  svg.appendChild(el('circle',{cx,cy,r:3,fill:'#334155'}));
+  function sector(cx,cy,r,a0,a1){
+    const r0=(-a0)*D2R, r1=(-a1)*D2R;
+    const x0=cx+r*Math.cos(r0), y0=cy+r*Math.sin(r0);
+    const x1=cx+r*Math.cos(r1), y1=cy+r*Math.sin(r1);
+    return `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 0 ${a1>a0?0:1} ${x1} ${y1} Z`;
+  }
+}
+
+/* --- Oberwellen-Balken + Tabelle --- */
+function renderHarmonics(model){
+  const svg=document.getElementById('harm'); clear(svg);
+  const W=400,H=300,padL=36,padB=30,padT=14,padR=10;
+  const list=NU_LIST;
+  const bw=(W-padL-padR)/list.length;
+  svg.appendChild(el('line',{x1:padL,y1:H-padB,x2:W-padR,y2:H-padB,stroke:'#cbd5e1'}));
+  for(let g=0; g<=1.0001; g+=0.25){
+    const y=(H-padB)-(g)*(H-padB-padT);
+    svg.appendChild(el('line',{x1:padL,y1:y,x2:W-padR,y2:y,stroke:'#eef2f7'}));
+    svg.appendChild(el('text',{x:padL-5,y:y+3,'text-anchor':'end','font-size':9,fill:'#64748b'},g.toFixed(2)));
+  }
+  list.forEach((nu,i)=>{
+    const kw=Math.abs(model.wf[nu].kw);
+    const x=padL+i*bw+bw*0.2, w=bw*0.6;
+    const h=kw*(H-padB-padT);
+    svg.appendChild(el('rect',{x,y:(H-padB)-h,width:w,height:h,rx:2,
+      fill:nu===1?'#2563eb':'#94a3b8'}));
+    svg.appendChild(el('text',{x:x+w/2,y:H-padB+13,'text-anchor':'middle','font-size':10,fill:'#475569'},'ν='+nu));
+    svg.appendChild(el('text',{x:x+w/2,y:(H-padB)-h-4,'text-anchor':'middle','font-size':9,fill:'#334155'},kw.toFixed(2)));
+  });
+  // Tabelle
+  const tbl=document.getElementById('harmTbl');
+  let html='<tr><th>ν</th><th>k_d</th><th>k_p</th><th>k_w</th></tr>';
+  for(const nu of list){
+    const r=model.wf[nu];
+    html+=`<tr><td>${nu}</td><td>${fmt(r.kd,3)}</td><td>${fmt(r.kp,3)}</td><td><b>${fmt(Math.abs(r.kw),3)}</b></td></tr>`;
+  }
+  tbl.innerHTML=html;
+}
+
+/* --- MMK / Drehfeld --- */
+let mmkState={wt:0};
+function renderMMK(model){
+  const svg=document.getElementById('mmk'); clear(svg);
+  const Q=model.Q;
+  const dx=Math.max(26, Math.min(46, 1100/Q));
+  const padL=46,padR=20,padT=20,h=200,padB=30;
+  const W=padL+padR+Q*dx, H=padT+h+padB;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.setAttribute('width',W);
+  const xOf=k=>padL+k*dx;
+  const m=mmf(model, mmkState.wt);
+  let maxA=0; for(const v of m.cum) maxA=Math.max(maxA,Math.abs(v));
+  maxA=Math.max(maxA, m.amp*1.1, 1e-6);
+  const mid=padT+h/2;
+  const yOf=v=>mid - (v/maxA)*(h/2-6);
+  // Null-Linie + Raster
+  svg.appendChild(el('line',{x1:padL,y1:mid,x2:padL+Q*dx,y2:mid,stroke:'#cbd5e1'}));
+  for(let k=0;k<Q;k++){
+    svg.appendChild(el('line',{x1:xOf(k),y1:padT,x2:xOf(k),y2:padT+h,stroke:'#f1f5f9'}));
+  }
+  // Treppe
+  let d=`M ${xOf(0)} ${yOf(m.cum[0])}`;
+  for(let k=0;k<Q;k++){
+    d+=` L ${xOf(k+1)} ${yOf(m.cum[k])}`;     // horizontale Stufe
+    if(k<Q-1) d+=` L ${xOf(k+1)} ${yOf(m.cum[k+1])}`;
+  }
+  svg.appendChild(el('path',{d,fill:'none',stroke:'#0f172a','stroke-width':1.8}));
+  // Grundwelle (p Polpaare)
+  let g=`M ${xOf(0)} ${yOf(m.amp*Math.cos(0 - m.ph + 0))}`;
+  const NPT=240;
+  for(let i=0;i<=NPT;i++){
+    const k=i/NPT*Q;
+    const theta=2*Math.PI*k/Q;
+    const val=m.amp*Math.cos(m.p*theta - m.ph);
+    g+=` L ${xOf(k)} ${yOf(val)}`;
+  }
+  svg.appendChild(el('path',{d:g,fill:'none',stroke:'#dc2626','stroke-width':1.6,
+    'stroke-dasharray':'5 4'}));
+  svg.appendChild(el('text',{x:padL,y:14,'font-size':11,fill:'#475569'},
+    `Durchflutung Θ(θ)  ·  ωt = ${(mmkState.wt*180/Math.PI%360).toFixed(0)}°`));
+}
+
+/* --- KPIs / Tabellen / Messages --- */
+function renderKPIs(model){
+  const p=model.params;
+  const kpis=[
+    ['q (Nut/Pol/Strang)', model.params.integer? fmt(p.q,0): fmt(p.q,3),''],
+    ['Polteilung τp', fmt(p.tau_p,2),'Nuten'],
+    ['Wicklungsschritt y', model.y,'Nuten'],
+    ['Sehnung W/τp', fmt(model.y/p.tau_p,3),''],
+    ['k_w (ν=1)', fmt(model.kw1,4),''],
+    ['k_d · k_p', `${fmt(model.kd1,3)} · ${fmt(model.kp1,3)}`,''],
+    ['Spulen je Strang', model.coilsPerPhase,''],
+    ['n_syn (50 Hz)', fmt(model.n_sync,0),'min⁻¹'],
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(([k,v,u])=>
+    `<div class="kpi"><div class="k">${k}</div><div class="v">${v}</div><div class="u">${u}</div></div>`).join('');
+}
+
+function renderLegend(){
+  document.getElementById('legend').innerHTML = PHASES.map(ph=>
+    `<span class="sw"><span class="dot" style="background:${PHASE_COLOR[ph]}"></span>Strang ${ph}</span>`).join('')
+    + '<span class="note" style="margin-left:auto">Pfeil = Stromrichtung bei ωt=0</span>';
+}
+
+function renderZoneTable(model){
+  const two=model.layers===2;
+  let html=`<tr><th>Nut</th><th>el. Winkel</th><th>Oberschicht</th>${two?'<th>Unterschicht</th>':''}</tr>`;
+  for(let k=0;k<model.Q;k++){
+    const t=model.top[k], b=model.bot[k];
+    const cell=o=>o?`<span class="ph-${o.phase}">${o.phase}${o.sign>0?'+':'−'}</span>`:'–';
+    html+=`<tr><td>${k+1}</td><td>${fmt(model.slots[k].angle,0)}°</td><td>${cell(t)}</td>${two?`<td>${cell(b)}</td>`:''}</tr>`;
+  }
+  document.getElementById('zoneTbl').innerHTML=html;
+}
+
+function renderCoilTable(model){
+  let html=`<tr><th>Spule</th><th>Strang</th><th>Nut von</th><th>Nut nach</th><th>Schritt</th><th>Schicht</th></tr>`;
+  model.coils.forEach((c,i)=>{
+    const span=((c.ret-c.go)%model.Q+model.Q)%model.Q;
+    html+=`<tr><td>${i+1}</td><td><span class="ph-${c.phase}">${c.phase}${c.sign>0?'+':'−'}</span></td>`+
+      `<td>${c.go+1}</td><td>${c.ret+1}</td><td>${span}</td>`+
+      `<td>${model.layers===2?'Ober→Unter':'einlagig'}</td></tr>`;
+  });
+  document.getElementById('coilTbl').innerHTML=html;
+}
+
+function renderMessages(model){
+  const box=document.getElementById('messages');
+  if(!model.messages.length){
+    box.innerHTML='<div class="msg ok">Symmetrische Drehstromwicklung – realisierbar.</div>';
+  } else {
+    box.innerHTML=model.messages.map(m=>`<div class="msg ${m.lvl}">${m.txt}</div>`).join('');
+  }
+}
+
+function renderWire(model){
+  const w={
+    U:+v('U'), f:+v('f'), P:+v('P'), eta:+v('eta'), J:+v('J'),
+    Bd:+v('Bd'), D:+v('D'), L:+v('L'), An:+v('An'), parallel:model.st.parallel,
+  };
+  const r=wireDesign(model, w);
+  const kpis=[
+    ['Polfluss Φ', fmt(r.Phi*1000,3),'mWb'],
+    ['Windungen/Strang N', fmt(r.N_phase,0),''],
+    ['Windungen/Spule', fmt(r.turnsPerCoil,1),''],
+    ['Strangstrom I', fmt(r.I_phase,2),'A'],
+    ['Leiterquerschnitt', fmt(r.A_cu,3),'mm²'],
+    ['Drahtdurchmesser d', fmt(r.d,3),'mm'],
+    ['Nutfüllfaktor', fmt(r.fill*100,1),'%'],
+  ];
+  document.getElementById('wireKpis').innerHTML=kpis.map(([k,vv,u])=>
+    `<div class="kpi"><div class="k">${k}</div><div class="v">${vv}</div><div class="u">${u}</div></div>`).join('');
+}
+
+function renderDahlander(model){
+  const card=document.getElementById('dahlanderCard');
+  if(!model.st.dahlander){ card.style.display='none'; return; }
+  card.style.display='';
+  const lowPoles=model.poles;             // Basiswicklung (hohe Polzahl, niedrige Drehzahl)
+  const highPoles=model.poles/2;          // Folgepol (niedrige Polzahl, hohe Drehzahl)
+  const wfHigh=windingFactors(model.Q, highPoles, model.y, model.st.zoneWidth);
+  const nLow=120*50/lowPoles, nHigh=120*50/highPoles;
+  document.getElementById('dahlanderBody').innerHTML=`
+    <div class="kpis">
+      <div class="kpi"><div class="k">Niedrige Drehzahl</div><div class="v">${nLow.toFixed(0)}</div><div class="u">min⁻¹ · ${lowPoles}-polig · Δ</div></div>
+      <div class="kpi"><div class="k">Hohe Drehzahl</div><div class="v">${nHigh.toFixed(0)}</div><div class="u">min⁻¹ · ${highPoles}-polig · YY</div></div>
+      <div class="kpi"><div class="k">k_w bei ${lowPoles} Polen</div><div class="v">${fmt(model.kw1,3)}</div><div class="u">Dreieck (Δ)</div></div>
+      <div class="kpi"><div class="k">k_w bei ${highPoles} Polen</div><div class="v">${fmt(wfHigh[1].kw,3)}</div><div class="u">Doppelstern (YY)</div></div>
+    </div>
+    <div class="note">Dahlander-Polumschaltung 2:1. Gleiche Wicklung, Umschaltung der Strangverschaltung
+    zwischen Dreieck (niedrige Drehzahl, ${lowPoles}-polig) und Doppelstern (hohe Drehzahl, ${highPoles}-polig,
+    Folgepolprinzip). Werte sind Richtwerte; k_w der hohen Drehzahl vereinfacht aus dem Nutenstern berechnet.</div>`;
+}
+
+/* ----------------------- UI / CONTROLLER --------------------------- */
+function v(id){ return document.getElementById(id).value; }
+let CURRENT=null;
+
+function readState(){
+  let pitch=+v('pitch');
+  return {
+    Q: Math.max(3,Math.round(+v('Q'))),
+    poles: Math.max(2, Math.round(+v('poles')/2)*2),
+    layers: +v('layers'),
+    type: v('type'),
+    zoneWidth: +v('zoneWidth'),
+    parallel: Math.max(1,Math.round(+v('parallel'))),
+    connection: v('connection'),
+    dahlander: v('dahlander')==='1',
+    pitch,
+  };
+}
+
+function syncPitchSlider(st, useAuto){
+  const params=windingParams(st.Q, st.poles);
+  const auto=Math.max(1, round(params.tau_p));
+  const slider=document.getElementById('pitch');
+  slider.max=Math.max(1, st.Q-1);
+  if(useAuto){ slider.value=auto; }
+  if(+slider.value> +slider.max) slider.value=slider.max;
+  document.getElementById('pitchVal').textContent=
+    `y = ${slider.value} (Durchmesser ≈ ${auto}, τp=${fmt(params.tau_p,2)})`;
+}
+
+function refresh(useAutoPitch=false){
+  try{
+    const st=readState();
+    syncPitchSlider(st, useAutoPitch);
+    st.pitch=+v('pitch');
+    const model=computeModel(st);
+    CURRENT=model;
+    renderMessages(model);
+    renderKPIs(model);
+    renderLegend();
+    renderSchema(model);
+    renderStar(model);
+    renderHarmonics(model);
+    renderZoneTable(model);
+    renderCoilTable(model);
+    renderWire(model);
+    renderDahlander(model);
+    renderMMK(model);
+  }catch(err){
+    document.getElementById('messages').innerHTML=
+      `<div class="msg bad">Berechnungsfehler: ${err.message}</div>`;
+    console.error(err);
+  }
+}
+
+/* Animation */
+let animId=null;
+function animate(){
+  const sp=+v('speed')/100*0.12;
+  mmkState.wt += sp;
+  renderMMK(CURRENT);
+  const deg=(mmkState.wt*180/Math.PI)%360;
+  document.getElementById('phaseReadout').textContent=
+    `iU=${Math.cos(mmkState.wt).toFixed(2)}  iV=${Math.cos(mmkState.wt-2*Math.PI/3).toFixed(2)}  iW=${Math.cos(mmkState.wt+2*Math.PI/3).toFixed(2)}`;
+  animId=requestAnimationFrame(animate);
+}
+function toggleAnim(){
+  const btn=document.getElementById('playBtn');
+  if(animId){ cancelAnimationFrame(animId); animId=null; btn.innerHTML='&#9658; Start'; }
+  else { btn.innerHTML='&#10073;&#10073; Pause'; animate(); }
+}
+
+/* Presets */
+function fillPresets(){
+  const sel=document.getElementById('preset');
+  sel.innerHTML=PRESETS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+}
+function applyPreset(){
+  const p=PRESETS[+v('preset')];
+  document.getElementById('Q').value=p.Q;
+  document.getElementById('poles').value=p.poles;
+  document.getElementById('layers').value=p.layers;
+  document.getElementById('type').value=p.type||'distributed';
+  document.getElementById('dahlander').value=p.dahlander?'1':'0';
+  document.getElementById('zoneWidth').value='60';
+  document.getElementById('parallel').value='1';
+  refresh(true);
+}
+
+/* Export / Print / Link */
+function exportJson(){
+  const data=JSON.stringify(readState(),null,2);
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='wicklung.json';
+  a.click();
+}
+function copyLink(){
+  const st=readState();
+  const hash=encodeURIComponent(JSON.stringify(st));
+  const url=location.origin+location.pathname+'#'+hash;
+  navigator.clipboard?.writeText(url);
+  history.replaceState(null,'','#'+hash);
+}
+function loadFromHash(){
+  if(!location.hash) return false;
+  try{
+    const st=JSON.parse(decodeURIComponent(location.hash.slice(1)));
+    document.getElementById('Q').value=st.Q;
+    document.getElementById('poles').value=st.poles;
+    document.getElementById('layers').value=st.layers;
+    document.getElementById('type').value=st.type;
+    document.getElementById('zoneWidth').value=st.zoneWidth;
+    document.getElementById('parallel').value=st.parallel;
+    document.getElementById('connection').value=st.connection;
+    document.getElementById('dahlander').value=st.dahlander?'1':'0';
+    document.getElementById('pitch').value=st.pitch;
+    return true;
+  }catch(e){ return false; }
+}
+
+function bind(){
+  ['Q','poles','layers','type','zoneWidth','parallel','connection','dahlander']
+    .forEach(id=>document.getElementById(id).addEventListener('change',()=>refresh(true)));
+  ['U','f','P','eta','J','Bd','D','L','An']
+    .forEach(id=>document.getElementById(id).addEventListener('input',()=>{ if(CURRENT) renderWire(CURRENT); }));
+  document.getElementById('pitch').addEventListener('input',()=>refresh(false));
+  document.getElementById('autoPitch').addEventListener('click',()=>refresh(true));
+  document.getElementById('applyPreset').addEventListener('click',applyPreset);
+  document.getElementById('playBtn').addEventListener('click',toggleAnim);
+  document.getElementById('printBtn').addEventListener('click',()=>window.print());
+  document.getElementById('exportJson').addEventListener('click',exportJson);
+  document.getElementById('copyLink').addEventListener('click',copyLink);
+}
+
+/* ------------------------------ TESTS ------------------------------ */
+function approx(a,b,tol){ return Math.abs(a-b)<=tol; }
+function runSelfTest(){
+  const out=[]; let pass=0, fail=0;
+  const check=(name,cond,info)=>{
+    if(cond){ pass++; out.push(`<span class="pass">PASS</span> ${name}`); }
+    else { fail++; out.push(`<span class="fail">FAIL</span> ${name}  ${info||''}`); }
+  };
+  // Referenz-Wicklungsfaktoren (Grundwelle, Vollschritt)
+  const cases=[
+    {Q:24,poles:4,exp:0.966},
+    {Q:36,poles:4,exp:0.960},
+    {Q:48,poles:4,exp:0.958},
+    {Q:24,poles:2,exp:0.958},
+    {Q:36,poles:2,exp:0.956},
+    {Q:18,poles:2,exp:0.960},
+    {Q:12,poles:10,exp:0.933},  // Zahnspule
+  ];
+  for(const c of cases){
+    const p=windingParams(c.Q,c.poles);
+    const y=Math.max(1,round(p.tau_p));
+    const wf=windingFactors(c.Q,c.poles,y,60);
+    check(`kw1 ${c.Q}/${c.poles} ≈ ${c.exp}`, approx(wf[1].kw,c.exp,0.004),
+      `(berechnet ${wf[1].kw.toFixed(4)})`);
+  }
+  // Symmetrie: Q nicht durch 3 -> Fehlermeldung
+  const msg=feasibility(20,4,2,'distributed');
+  check('Q=20 nicht durch 3 → Fehler erkannt', msg.some(m=>m.lvl==='bad'));
+  // Spulenanzahl Zweischicht = Q ; Einschicht = Q/2
+  const m2=computeModel({Q:36,poles:4,layers:2,type:'distributed',zoneWidth:60,parallel:1,pitch:9,connection:'Y',dahlander:false});
+  check('Zweischicht 36/4: 36 Spulen', m2.coils.length===36, `(=${m2.coils.length})`);
+  const m1=computeModel({Q:24,poles:4,layers:1,type:'distributed',zoneWidth:60,parallel:1,pitch:6,connection:'Y',dahlander:false});
+  check('Einschicht 24/4: 12 Spulen', m1.coils.length===12, `(=${m1.coils.length})`);
+  // Strangsymmetrie: gleich viele Spulen je Strang
+  const cntU=m2.coils.filter(c=>c.phase==='U').length;
+  const cntV=m2.coils.filter(c=>c.phase==='V').length;
+  const cntW=m2.coils.filter(c=>c.phase==='W').length;
+  check('36/4 gleiche Spulenzahl je Strang', cntU===cntV&&cntV===cntW, `(U${cntU} V${cntV} W${cntW})`);
+  // Sehnung: y<tau_p senkt kp
+  const wfFull=windingFactors(36,4,9,60), wfChord=windingFactors(36,4,7,60);
+  check('Sehnung senkt kw (36/4, y=7<9)', wfChord[1].kw<wfFull[1].kw,
+    `(${wfChord[1].kw.toFixed(3)}<${wfFull[1].kw.toFixed(3)})`);
+  // MMK Mittelwert ~ 0
+  const mm=mmf(m2,0.7);
+  const mean=mm.cum.reduce((a,b)=>a+b,0)/mm.cum.length;
+  check('MMK mittelwertfrei', approx(mean,0,1e-9), `(${mean.toExponential(1)})`);
+  // 5./7. Oberwelle kleiner als Grundwelle
+  check('kw5<kw1 (36/4)', Math.abs(wfFull[5].kw)<wfFull[1].kw);
+
+  const card=document.getElementById('selftestCard');
+  card.style.display='';
+  document.getElementById('selftest').innerHTML=
+    `${pass} PASS / ${fail} FAIL\n\n`+out.join('\n');
+  console.log(`[selftest] ${pass} PASS / ${fail} FAIL`);
+  return {pass, fail};
+}
+
+/* ------------------------------ INIT ------------------------------- */
+window.addEventListener('DOMContentLoaded',()=>{
+  fillPresets();
+  bind();
+  const fromHash=loadFromHash();
+  if(!fromHash){ document.getElementById('preset').value='1'; applyPreset(); }
+  else refresh(false);
+  if(new URLSearchParams(location.search).get('selftest')==='1'){
+    runSelfTest();
+  }
+});
+</script>
+</body>
+</html>
