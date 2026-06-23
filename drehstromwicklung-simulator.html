@@ -64,6 +64,13 @@
   .tbl-scroll{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px}
   .ph-U{color:var(--U);font-weight:700}.ph-V{color:var(--V);font-weight:700}.ph-W{color:var(--W);font-weight:700}
   .anim-ctl{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+  .schema-ctl{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  .schema-ctl .lbl{font-size:12px;color:var(--muted);font-weight:600;margin-right:7px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;vertical-align:middle}
+  .seg button{border:none;border-right:1px solid var(--line);border-radius:0;padding:6px 13px;background:#fff;font-weight:600}
+  .seg button:last-child{border-right:none}
+  .seg button.active{background:var(--accent);color:#fff}
+  .seg button:not(.active):hover{background:#f1f5f9}
   .note{font-size:11.5px;color:var(--muted);margin-top:8px}
   #selftest{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap}
   .pass{color:var(--ok)}.fail{color:var(--bad);font-weight:700}
@@ -163,9 +170,23 @@
   <div class="card">
     <h2>Wickelschema (abgewickelt)</h2>
     <div class="body">
+      <div class="schema-ctl no-print">
+        <span><span class="lbl">Ansicht</span>
+          <span class="seg" id="viewSeg">
+            <button data-view="overview" class="active">Gesamt</button>
+            <button data-view="tracks">Strang-Spuren</button>
+          </span></span>
+        <span id="filterWrap"><span class="lbl">Strang isolieren</span>
+          <span class="seg" id="filterSeg">
+            <button data-ph="all" class="active">Alle</button>
+            <button data-ph="U" style="color:var(--U)">U</button>
+            <button data-ph="V" style="color:var(--V)">V</button>
+            <button data-ph="W" style="color:var(--W)">W</button>
+          </span></span>
+      </div>
       <div class="legend" id="legend"></div>
       <div class="svg-scroll"><svg id="schema"></svg></div>
-      <div class="note">Spulenseiten farbig nach Strang. Pfeile = Stromrichtung im Referenzzeitpunkt (&omega;t = 0). Bei Zweischicht: Oberschicht oben, Unterschicht unten.</div>
+      <div class="note">Folge der durchgezogenen Linie eines Strangs von Klemme 1 (z.&nbsp;B. U1) seriell durch alle Spulen zu Klemme 2 (U2) &ndash; sie zeigt die Verschaltungs-Reihenfolge. Breite Leiter = Spulenseiten in den Nuten; kleine Pfeile = Stromrichtung/Polung bei &omega;t = 0. Vorderer Wickelkopf oben, Verschaltung und Klemmen unten. Zahlen am oberen Wickelkopf = Spulen-Reihenfolge. Bei Zweischicht: Hinleiter (go) links, R&uuml;ckleiter (ret) rechts in der Nut.</div>
     </div>
   </div>
 
@@ -489,74 +510,130 @@ function el(tag, attrs={}, text){
 function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
 function phColor(ph){ return PHASE_COLOR[ph]; }
 
-/* --- Wickelschema (abgewickelt) --- */
+/* --- Wickelschema (abgewickelt, verfolgbar) --- */
+let SCHEMA_VIEW='overview';   // 'overview' | 'tracks'
+let SCHEMA_FILTER='all';      // 'all' | 'U' | 'V' | 'W'
+const TERM={U:['U1','U2'], V:['V1','V2'], W:['W1','W2']};
+
+/** Spulen eines Strangs in Verschaltungs-Reihenfolge (nach Hinleiter-Nut). */
+function coilSeries(model, ph){
+  return model.coils.filter(c=>c.phase===ph).slice().sort((a,b)=>a.go-b.go);
+}
+
+/** Eisen-/Nutraster (ohne Nummern – die kommen obenauf). */
+function drawIron(svg, x0, dx, Q, barTop, barBot){
+  svg.appendChild(el('rect',{x:x0-6,y:barTop-4,width:Q*dx+12,height:barBot-barTop+8,
+    fill:'#f7f9fc',stroke:'#e4e9f0',rx:4}));
+  for(let k=0;k<=Q;k++)
+    svg.appendChild(el('line',{x1:x0+k*dx,y1:barTop,x2:x0+k*dx,y2:barBot,stroke:'#eef2f7','stroke-width':1}));
+}
+
+/** Nutnummern mit weisser Unterlegung (zuletzt gezeichnet, immer lesbar). */
+function drawSlotNumbers(svg, x0, dx, Q, yBase){
+  for(let k=0;k<Q;k++){
+    const x=x0+(k+0.5)*dx;
+    svg.appendChild(el('rect',{x:x-8,y:yBase-9,width:16,height:13,rx:2,fill:'#fff',opacity:0.8}));
+    svg.appendChild(el('text',{x:x,y:yBase+1,'text-anchor':'middle','font-size':10.5,fill:'#475569','font-weight':600},k+1));
+  }
+}
+
+/** Ein Strang als durchgehender, verfolgbarer Strompfad (schraege Wickelkoepfe). */
+function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, backBot){
+  const series=coilSeries(model, ph);
+  if(!series.length) return;
+  const col=phColor(ph);
+  const off=model.layers===2 ? Math.min(7, dx*0.17) : 0;
+  const xG=k=> x0+(k+0.5)*dx-off;     // Hinleiter (go), links
+  const xR=k=> x0+(k+0.5)*dx+off;     // Rueckleiter (ret), rechts
+  // Spulenseiten als blasse Leiter + deutlicher Polungspfeil
+  const bar=(x,up)=>{
+    svg.appendChild(el('line',{x1:x,y1:barTop+2,x2:x,y2:barBot-2,stroke:col,
+      'stroke-width':8,opacity:0.14,'stroke-linecap':'round'}));
+    const my=(barTop+barBot)/2, t=up?-1:1;
+    svg.appendChild(el('path',{d:`M ${x} ${my+t*9} L ${x-5} ${my+t*1} L ${x+5} ${my+t*1} Z`,
+      fill:col,opacity:0.85}));
+  };
+  series.forEach(c=>{ bar(xG(c.go), c.sign>0); bar(xR(c.ret), c.sign<0); });
+  // Knoten je Spule (Eintritt/Austritt unten, polrichtig)
+  const node=c=> c.sign>0 ? {inX:xG(c.go), outX:xR(c.ret)} : {inX:xR(c.ret), outX:xG(c.go)};
+  const frontMax=barTop-frontTop-4, backMax=backBot-barBot-20;
+  const apexF=(a,b)=> Math.min(frontMax, 14+Math.abs(b-a)/dx*2.4);
+  const apexB=(a,b)=> Math.min(backMax, 12+Math.abs(b-a)/dx*1.7);
+  // Durchgehende Ader: Klemme1 -> Spulen -> Klemme2 (schraege Wickelkoepfe)
+  const P=[];
+  series.forEach((c,i)=>{
+    const n=node(c), inX=n.inX, outX=n.outX, midF=(inX+outX)/2;
+    if(i===0) P.push([inX, backBot]);                       // Klemme ph1
+    P.push([inX, barBot]); P.push([inX, barTop]);           // hoch durch Eintritts-Nut
+    P.push([midF, barTop-apexF(inX,outX)]);                 // schraeger vorderer Wickelkopf (Scheitel)
+    P.push([outX, barTop]); P.push([outX, barBot]);         // runter durch Austritts-Nut
+    if(i<series.length-1){
+      const nn=node(series[i+1]), midB=(outX+nn.inX)/2;
+      P.push([midB, barBot+apexB(outX,nn.inX)]);            // schraege Verschaltung (Scheitel)
+      P.push([nn.inX, barBot]);
+    } else {
+      P.push([outX, backBot]);                              // Klemme ph2
+    }
+  });
+  let d='M '+P[0][0].toFixed(1)+' '+P[0][1].toFixed(1);
+  for(let i=1;i<P.length;i++) d+=' L '+P[i][0].toFixed(1)+' '+P[i][1].toFixed(1);
+  svg.appendChild(el('path',{d,fill:'none',stroke:col,'stroke-width':2.6,
+    'stroke-linejoin':'round','stroke-linecap':'round'}));
+  // Spulennummern am vorderen Scheitel
+  series.forEach((c,i)=>{
+    const n=node(c), midF=(n.inX+n.outX)/2, ay=barTop-apexF(n.inX,n.outX);
+    svg.appendChild(el('circle',{cx:midF,cy:ay-8,r:8,fill:'#fff',stroke:col,'stroke-width':1.3}));
+    svg.appendChild(el('text',{x:midF,y:ay-4.5,'text-anchor':'middle','font-size':9.5,
+      fill:col,'font-weight':700}, i+1));
+  });
+  // Klemmen
+  const term=(x,label)=>{
+    svg.appendChild(el('circle',{cx:x,cy:backBot,r:5,fill:col,stroke:'#fff','stroke-width':1.5}));
+    svg.appendChild(el('text',{x:x,y:backBot+17,'text-anchor':'middle','font-size':11.5,
+      fill:col,'font-weight':700},label));
+  };
+  term(node(series[0]).inX, TERM[ph][0]);
+  term(node(series[series.length-1]).outX, TERM[ph][1]);
+}
+
 function renderSchema(model){
   const svg=document.getElementById('schema');
   clear(svg);
-  const Q=model.Q, layers=model.layers;
-  const dx=Math.max(26, Math.min(46, 1100/Q));
-  const padL=46, padR=20, padT=70, slotH=120, padB=46;
-  const W=padL+padR+Q*dx, H=padT+slotH+padB;
-  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.setAttribute('width', W);
-  const xOf=k=>padL+(k+0.5)*dx;
-  const yTop=padT, yBot=padT+slotH;
-  // Eisen / Nutraster
-  svg.appendChild(el('rect',{x:padL-6,y:yTop-4,width:Q*dx+12,height:slotH+8,fill:'#f8fafc',stroke:'#e2e8f0'}));
-  for(let k=0;k<Q;k++){
-    const x=xOf(k);
-    svg.appendChild(el('line',{x1:x,y1:yTop,x2:x,y2:yBot,stroke:'#e6eaf0','stroke-width':1}));
-    svg.appendChild(el('text',{x:x,y:yBot+16,'text-anchor':'middle','font-size':11,fill:'#5b6675'}, (k+1)));
+  const Q=model.Q;
+  const lbl=`Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
+  if(SCHEMA_VIEW==='tracks'){
+    const dx=Math.max(32, Math.min(62, 1300/Q));
+    const padL=56, padR=30, titleH=32, trackH=210;
+    const frontSpan=70, barH=52, backSpan=88;
+    const Wd=padL+padR+Q*dx, H=titleH+3*trackH+14;
+    svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
+    svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
+      lbl+' — Strang-Spuren (jeder Pfad einzeln)'));
+    PHASES.forEach((ph,ti)=>{
+      const top=titleH+ti*trackH;
+      const barTop=top+frontSpan, barBot=barTop+barH;
+      const frontTop=top+6, backBot=barBot+backSpan-18;
+      svg.appendChild(el('text',{x:padL-12,y:(barTop+barBot)/2+5,'text-anchor':'end',
+        'font-size':14,fill:phColor(ph),'font-weight':700},ph));
+      drawIron(svg, padL, dx, Q, barTop, barBot);
+      drawPhasePath(svg, model, ph, padL, dx, Q, barTop, barBot, frontTop, backBot);
+      drawSlotNumbers(svg, padL, dx, Q, barBot+13);
+    });
+  } else {
+    const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
+    const dx=Math.max(36, Math.min(72, 1500/Q));
+    const padL=56, padR=30, titleH=30;
+    const frontSpan=104, barH=96, backSpan=116;
+    const barTop=titleH+frontSpan, barBot=barTop+barH;
+    const frontTop=titleH+6, backBot=barBot+backSpan-18;
+    const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan;
+    svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
+    svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
+      lbl+(SCHEMA_FILTER!=='all'?` — nur Strang ${SCHEMA_FILTER}`:'')));
+    drawIron(svg, padL, dx, Q, barTop, barBot);
+    phases.forEach(ph=> drawPhasePath(svg, model, ph, padL, dx, Q, barTop, barBot, frontTop, backBot));
+    drawSlotNumbers(svg, padL, dx, Q, barBot+13);
   }
-  // Spulenseiten zeichnen
-  const sideY = (k, layer)=>{
-    // layer: 'top' oben, 'bot' unten, 'single' mittig
-    if(layer==='single') return [yTop+18, yBot-18];
-    if(layer==='top')    return [yTop+10, yTop+slotH*0.46];
-    return [yTop+slotH*0.54, yBot-10];
-  };
-  const drawSide=(k, layer, ph, sign)=>{
-    const x=xOf(k);
-    const [y1,y2]=sideY(k,layer);
-    svg.appendChild(el('rect',{x:x-5,y:y1,width:10,height:y2-y1,rx:2,
-      fill:phColor(ph),opacity:0.85}));
-    // Stromrichtungspfeil
-    const cy=(y1+y2)/2;
-    const up = sign>0;
-    const ay = up? y1+9 : y2-9;
-    const dir = up? -1: 1;
-    svg.appendChild(el('path',{d:`M ${x} ${ay+dir*6} L ${x-4} ${ay-dir*0} L ${x+4} ${ay-dir*0} Z`,
-      fill:'#fff'}));
-  };
-  // End-Verbindungen (Wickelkopf) je Spule
-  const coilColorByIndex=model.coils;
-  let hi=0;
-  for(const c of model.coils){
-    const x1=xOf(c.go), x2=xOf(c.ret);
-    const layA = layers===2?'top':'single';
-    const layB = layers===2?'bot':'single';
-    const [ya]=sideY(c.go,layA);
-    const top = padT-8 - (hi%4)*8;
-    hi++;
-    // Bogen oben verbindet go->ret
-    let xr=x2;
-    // bei Umlauf (ret<go) zeichne nach rechts ueber den Rand hinaus verkuerzt
-    const path=`M ${x1} ${ya} L ${x1} ${top} L ${xr} ${top} L ${xr} ${sideY(c.ret,layB)[0]}`;
-    svg.appendChild(el('path',{d:path,fill:'none',stroke:phColor(c.phase),
-      'stroke-width':1.4,opacity:0.55}));
-  }
-  // Schichtseiten
-  for(let k=0;k<Q;k++){
-    if(layers===2){
-      if(model.top[k]) drawSide(k,'top',model.top[k].phase,model.top[k].sign);
-      if(model.bot[k]) drawSide(k,'bot',model.bot[k].phase,model.bot[k].sign);
-    } else {
-      if(model.top[k]) drawSide(k,'single',model.top[k].phase,model.top[k].sign);
-    }
-  }
-  // Titelzeile
-  svg.appendChild(el('text',{x:padL,y:20,'font-size':12,fill:'#1f2733','font-weight':700},
-    `Q=${Q}, 2p=${model.poles}, y=${model.y}, ${layers===1?'Einschicht':'Zweischicht'}`));
 }
 
 /* --- Nutenstern --- */
@@ -896,6 +973,19 @@ function bind(){
   document.getElementById('printBtn').addEventListener('click',()=>window.print());
   document.getElementById('exportJson').addEventListener('click',exportJson);
   document.getElementById('copyLink').addEventListener('click',copyLink);
+  document.getElementById('viewSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    SCHEMA_VIEW=b.dataset.view;
+    [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
+    document.getElementById('filterWrap').style.display = SCHEMA_VIEW==='tracks'?'none':'';
+    if(CURRENT) renderSchema(CURRENT);
+  });
+  document.getElementById('filterSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    SCHEMA_FILTER=b.dataset.ph;
+    [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
+    if(CURRENT) renderSchema(CURRENT);
+  });
 }
 
 /* ------------------------------ TESTS ------------------------------ */
