@@ -601,8 +601,9 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   const apxB=apx;   // untere Schenkel exakt so lang wie obere
   for(let i=0;i<series.length-1;i++){
     const xa=outX(series[i]), xb=inX(series[i+1]), dd=xb-xa;
+    const dep=apxB*(0.6 + (i%4)/4*0.38);          // gestaffelte Tiefe 60..95% – fuellt den unteren Schenkelbereich
     if(Math.abs(dd) <= W/2){
-      line(`M ${xa} ${barBot} L ${(xa+xb)/2} ${barBot+Math.min(apxB,14+Math.abs(dd)/dx*2.4)} L ${xb} ${barBot}`, 1.8, 0.85);
+      line(`M ${xa} ${barBot} L ${(xa+xb)/2} ${barBot+dep} L ${xb} ${barBot}`, 1.8, 0.85);
     } else if(dd>0){                               // kuerzer ueber linken Rand
       line(`M ${xa} ${barBot} L ${leftB} ${barBot+apxB}`, 1.8, 0.85);
       line(`M ${rightB} ${barBot+apxB} L ${xb} ${barBot}`, 1.8, 0.85);
@@ -629,8 +630,8 @@ function renderSchema(model){
   const lbl=`Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
   if(SCHEMA_VIEW==='tracks'){
     const dx=Math.max(32, Math.min(62, 1300/Q));
-    const padL=56, padR=30, titleH=32, trackH=236;
-    const frontSpan=84, barH=52, backSpan=84;
+    const padL=56, padR=30, titleH=32, trackH=262;
+    const frontSpan=84, barH=52, backSpan=126;
     const Wd=padL+padR+Q*dx, H=titleH+3*trackH+14;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
@@ -638,7 +639,7 @@ function renderSchema(model){
     PHASES.forEach((ph,ti)=>{
       const top=titleH+ti*trackH;
       const barTop=top+frontSpan, barBot=barTop+barH;
-      const frontTop=top+6, backBot=barBot+backSpan-6;
+      const frontTop=top+6, backBot=barBot+backSpan-24;
       svg.appendChild(el('text',{x:padL-12,y:(barTop+barBot)/2+5,'text-anchor':'end',
         'font-size':14,fill:phColor(ph),'font-weight':700},ph));
       drawIron(svg, padL, dx, Q, barTop, barBot);
@@ -649,10 +650,10 @@ function renderSchema(model){
     const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
     const dx=Math.max(36, Math.min(72, 1500/Q));
     const padL=56, padR=30, titleH=30;
-    const frontSpan=140, barH=96, backSpan=140;
+    const frontSpan=140, barH=96, backSpan=200;
     const barTop=titleH+frontSpan, barBot=barTop+barH;
-    const frontTop=titleH+6, backBot=barBot+backSpan-6;
-    const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan+16;
+    const frontTop=titleH+6, backBot=barBot+backSpan-24;
+    const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan+8;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`); svg.setAttribute('width',Wd);
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
       lbl+(SCHEMA_FILTER!=='all'?` — nur Strang ${SCHEMA_FILTER}`:'')));
