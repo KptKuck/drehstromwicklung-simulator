@@ -671,12 +671,13 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     svg.appendChild(el('circle',{cx:lx,cy:ly,r:8,fill:'#fff',stroke:col,'stroke-width':1.3}));
     svg.appendChild(el('text',{x:lx,y:ly+3.5,'text-anchor':'middle','font-size':9.5,fill:col,'font-weight':700}, i+1));
   });
-  // Schaltverbindung: Spulen in Reihenfolge zu einer Strang-Ader verketten
-  const wireY=barBot+apx+12;                                  // Verschaltungsebene unter den Spulen
-  tips.forEach(x=> line(`M ${x} ${barBot+apx} L ${x} ${wireY}`, 1.6, 0.8));   // Stich von jeder Spulenspitze
+  // Schaltverbindung: jeder Strang auf eigener Hoehen-Ebene (im Gesamt-Modus getrennt, keine Ueberlappung)
+  const phaseIdx=(SCHEMA_FILTER==='all')?PHASES.indexOf(ph):0;
+  const wireY=barBot+apx+14+phaseIdx*24;
+  tips.forEach(x=> line(`M ${x} ${barBot+apx} L ${x} ${wireY}`, 1.4, 0.5));   // Stich von Spulenspitze zur Strang-Ebene
   for(let i=0;i<tips.length-1;i++){
     const xa=tips[i], xb=tips[i+1];
-    line(`M ${xa} ${wireY} Q ${(xa+xb)/2} ${wireY+13} ${xb} ${wireY}`, 2.4);  // Reihen-Verbindung Spule i -> i+1
+    line(`M ${xa} ${wireY} Q ${(xa+xb)/2} ${wireY+12} ${xb} ${wireY}`, 2.8);  // Reihen-Verbindung Spule i -> i+1
   }
   model._tips = model._tips || {}; model._tips[ph] = {first:tips[0], last:tips[tips.length-1], wireY, backBot};
   // Klemmen-Ausfuehrungen U1/U2 an den Enden der Kette
@@ -718,7 +719,7 @@ function renderSchema(model){
     const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
     const dx=Math.max(52, Math.min(96, 1900/Q));
     const padL=56, padR=30, titleH=30;
-    const frontSpan=300, barH=260, backSpan=360;
+    const frontSpan=300, barH=260, backSpan=420;
     const barTop=titleH+frontSpan, barBot=barTop+barH;
     const frontTop=titleH+6, backBot=barBot+backSpan-24;
     const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan+8;
