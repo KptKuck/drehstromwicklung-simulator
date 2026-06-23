@@ -286,16 +286,7 @@ const PHASE_COLOR = {U:'#e23b50', V:'#1f9d55', W:'#2563eb'};
 const M = 3;                       // Straenge (Drehstrom)
 const NU_LIST = [1,3,5,7,9,11,13]; // betrachtete Oberwellen
 
-const PRESETS = [
-  {name:'1400 min⁻¹ · 24/4 · Einschicht',  Q:24, poles:4, layers:1, type:'distributed'},
-  {name:'1400 min⁻¹ · 36/4 · Zweischicht',  Q:36, poles:4, layers:2, type:'distributed'},
-  {name:'1400 min⁻¹ · 48/4 · Zweischicht',  Q:48, poles:4, layers:2, type:'distributed'},
-  {name:'2900 min⁻¹ · 24/2 · Einschicht',   Q:24, poles:2, layers:1, type:'distributed'},
-  {name:'2900 min⁻¹ · 36/2 · Zweischicht',  Q:36, poles:2, layers:2, type:'distributed'},
-  {name:'2900 min⁻¹ · 18/2 · Zweischicht',  Q:18, poles:2, layers:2, type:'distributed'},
-  {name:'Dahlander · 24/4-2 · polumschaltbar', Q:24, poles:4, layers:2, type:'distributed', dahlander:true},
-  {name:'Zahnspule · 12/10 · Zweischicht',  Q:12, poles:10, layers:2, type:'toothcoil'},
-];
+let PRESETS = [];   // wird in buildPresets() erzeugt (kuratierte Beispiele + alle symmetrischen Wicklungen)
 
 /* ----------------------------- ENGINE ------------------------------ */
 const D2R = Math.PI/180;
@@ -332,14 +323,32 @@ function windingParams(Q, poles){
   return {p, q, tau_p, alpha, t, qFrac:{num:qNum/g, den:qDen/g}, integer: Number.isInteger(q)};
 }
 
-/** Strangzeiger der Oberschicht je Nut (Slot-Star). */
+// 60deg-Band, Reihenfolge U+, W-, V+, U-, W+, V-
+const ZONE_SEQ60 = [
+  {phase:'U', sign:+1}, {phase:'W', sign:-1}, {phase:'V', sign:+1},
+  {phase:'U', sign:-1}, {phase:'W', sign:+1}, {phase:'V', sign:-1},
+];
+
+/** Strangzeiger der Oberschicht je Nut (Slot-Star).
+ *  Zonenzuordnung exakt ganzzahlig: zone = floor(k*2m*p/Q) mod 2m.
+ *  Das entspricht floor(theta_el/60deg), vermeidet aber Floating-Point-Fehler
+ *  an den Zonengrenzen und liefert dadurch auch bei Bruchlochwicklungen
+ *  eine symmetrische (balancierte) Strangaufteilung. */
 function slotAssignments(Q, poles, zoneWidth){
   const {alpha} = windingParams(Q, poles);
+  const p = poles/2;
   const out = [];
   for(let k=0;k<Q;k++){
-    const ang = k*alpha;                       // el. Winkel
-    const b = beltAssign(ang, zoneWidth);
-    out.push({slot:k, angle:((ang%360)+360)%360, phase:b.phase, sign:b.sign});
+    const ang = ((k*alpha)%360+360)%360;       // el. Winkel (nur Anzeige/Nutenstern)
+    let b;
+    if(zoneWidth === 120){
+      const z = ((Math.floor(k*M*p/Q) % M) + M) % M;        // 3 Zonen
+      b = {phase: PHASES[z], sign:+1};
+    } else {
+      const z = ((Math.floor(k*2*M*p/Q) % (2*M)) + (2*M)) % (2*M);  // 6 Zonen
+      b = ZONE_SEQ60[z];
+    }
+    out.push({slot:k, angle:ang, phase:b.phase, sign:b.sign});
   }
   return out;
 }
@@ -912,9 +921,45 @@ function toggleAnim(){
 }
 
 /* Presets */
+function presetLabel(p){
+  if(p.name) return p.name;
+  const pa=windingParams(p.Q,p.poles);
+  const y=Math.max(1,Math.round(pa.tau_p));
+  const kw=windingFactors(p.Q,p.poles,y,60)[1].kw;
+  const q=p.Q/(p.poles*M);
+  const qStr=Number.isInteger(q)?q:q.toFixed(3);
+  const tag=p.layers===1?'Einschicht':'Zweischicht';
+  return `${p.Q}/${p.poles} · ${tag} · q=${qStr} · k_w=${kw.toFixed(3)}${q<1?' · Zahnspule':''}`;
+}
+
+/** Erzeugt alle symmetrischen Drehstromwicklungen Q=12..48 (3|Q/ggT(Q,p)). */
+function buildPresets(){
+  const list=[];
+  list.push({group:'★ Beispiele', name:'Dahlander · 24/4-2 · polumschaltbar', Q:24, poles:4, layers:2, type:'distributed', dahlander:true});
+  list.push({group:'★ Beispiele', name:'1400 min⁻¹ · 36/4 · Zweischicht', Q:36, poles:4, layers:2, type:'distributed'});
+  list.push({group:'★ Beispiele', name:'2900 min⁻¹ · 24/2 · Einschicht', Q:24, poles:2, layers:1, type:'distributed'});
+  list.push({group:'★ Beispiele', name:'Zahnspule · 12/10', Q:12, poles:10, layers:2, type:'toothcoil'});
+  for(let Q=12;Q<=48;Q++){
+    for(let poles=2;poles<=Q-2;poles+=2){
+      const p=poles/2, t=gcd(Q,p);
+      if((Q/t)%M!==0) continue;                       // nur symmetrische Drehstromwicklungen
+      const q=Q/(poles*M), integer=Number.isInteger(q);
+      const type=q<1?'toothcoil':'distributed';
+      list.push({group:`Q = ${Q}`, Q, poles, layers:2, type});
+      if(integer && Q%2===0) list.push({group:`Q = ${Q}`, Q, poles, layers:1, type:'distributed'});
+    }
+  }
+  PRESETS=list;
+}
+
 function fillPresets(){
   const sel=document.getElementById('preset');
-  sel.innerHTML=PRESETS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+  sel.innerHTML='';
+  let cur=null, og=null;
+  PRESETS.forEach((p,i)=>{
+    if(p.group!==cur){ cur=p.group; og=document.createElement('optgroup'); og.label=cur; sel.appendChild(og); }
+    const o=document.createElement('option'); o.value=String(i); o.textContent=presetLabel(p); og.appendChild(o);
+  });
 }
 function applyPreset(){
   const p=PRESETS[+v('preset')];
@@ -1047,6 +1092,7 @@ function runSelfTest(){
 
 /* ------------------------------ INIT ------------------------------- */
 window.addEventListener('DOMContentLoaded',()=>{
+  buildPresets();
   fillPresets();
   bind();
   const fromHash=loadFromHash();
