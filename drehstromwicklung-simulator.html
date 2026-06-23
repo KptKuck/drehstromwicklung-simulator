@@ -55,6 +55,8 @@
   .legend .sw{display:inline-flex;align-items:center;gap:6px}
   .legend .dot{width:13px;height:13px;border-radius:3px;display:inline-block}
   svg{display:block;width:100%;height:auto;background:#fff}
+  /* Wickelschema in voller Groesse (nicht stauchen); bei Bedarf horizontal scrollen */
+  #schema{width:auto;min-width:100%;max-width:none;height:auto}
   .svg-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   @media(max-width:880px){.grid2{grid-template-columns:1fr}}
@@ -686,7 +688,7 @@ function renderSchema(model){
   const wnum=(PRESETS.find(p=>!p.name && p.Q===Q && p.poles===model.poles && p.layers===model.layers)||{}).num;
   const lbl=`${wnum?'Nr. '+wnum+' · ':''}Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
   if(SCHEMA_VIEW==='tracks'){
-    const dx=Math.max(32, Math.min(62, 1300/Q));
+    const dx=Math.max(40, Math.min(74, 1500/Q));
     const padL=56, padR=30, titleH=32, trackH=262;
     const frontSpan=84, barH=52, backSpan=126;
     const Wd=padL+padR+Q*dx, H=titleH+3*trackH+14;
@@ -705,7 +707,7 @@ function renderSchema(model){
     });
   } else {
     const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
-    const dx=Math.max(36, Math.min(72, 1500/Q));
+    const dx=Math.max(46, Math.min(86, 1700/Q));
     const padL=56, padR=30, titleH=30;
     const frontSpan=140, barH=96, backSpan=200;
     const barTop=titleH+frontSpan, barBot=barTop+barH;
