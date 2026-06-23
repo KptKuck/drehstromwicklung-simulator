@@ -20,9 +20,8 @@
   header .sub{color:#9fb0c7;font-size:12.5px}
   .wrap{max-width:1760px;margin:0 auto;padding:18px}
   /* Vollbild-Wickelschema (Hauptspalte) + Nebendiagramme als Sidebar */
-  .layout-2col{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:18px;align-items:start}
+  .layout-2col{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
   .main-col{min-width:0}
-  .main-col .card{position:sticky;top:14px}
   .side-col{display:flex;flex-direction:column;gap:18px;min-width:0}
   .side-col .grid2{grid-template-columns:1fr}
   .side-col svg{width:100%}
@@ -717,9 +716,9 @@ function renderSchema(model){
     });
   } else {
     const phases = SCHEMA_FILTER==='all' ? PHASES : [SCHEMA_FILTER];
-    const dx=Math.max(46, Math.min(86, 1700/Q));
+    const dx=Math.max(52, Math.min(96, 1900/Q));
     const padL=56, padR=30, titleH=30;
-    const frontSpan=140, barH=96, backSpan=200;
+    const frontSpan=300, barH=260, backSpan=360;
     const barTop=titleH+frontSpan, barBot=barTop+barH;
     const frontTop=titleH+6, backBot=barBot+backSpan-24;
     const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan+8;
