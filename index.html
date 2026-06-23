@@ -571,50 +571,42 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     'stroke-width':w,'stroke-linejoin':'round','stroke-linecap':'round',opacity:op==null?1:op}));
   const apx=Math.max(Math.min(barTop-frontTop, backBot-barBot)-14, 12);  // gleiche Schenkellaenge oben/unten
   const hAt=(p,mid)=> Math.max(0, apx*(1 - Math.abs(p-mid)/(y/2)));
-  series.forEach((c,i)=>{
+  // Stirnkopf go->go+y, ueber (dir=-1) oder unter (dir=+1) der Nut; mit Rand-Durchlauf
+  function head(c, baseY, dir){
     const g=c.go, rLog=g+y, mid=g+y/2;
-    const sx=xG(g), ex=xR(c.ret);
+    const sx=xG(g), ex=xR(c.ret), peakY=baseY+dir*apx;
     let lx;
-    if(rLog < Q){                                  // kein Rand-Durchlauf
+    if(rLog < Q){
       const mx=xN(mid);
-      line(`M ${sx} ${barTop} L ${mx} ${barTop-apx} L ${ex} ${barTop}`, 2.4);
+      line(`M ${sx} ${baseY} L ${mx} ${peakY} L ${ex} ${baseY}`, 2.4);
       lx=mx;
-    } else {                                       // ueber den Rand
+    } else {
       const hE=hAt(Q, mid);
-      let pr=`M ${sx} ${barTop}`;
-      if(mid<Q) pr+=` L ${xN(mid)} ${barTop-apx}`;
-      pr+=` L ${rightB} ${barTop-hE}`;
+      let pr=`M ${sx} ${baseY}`;
+      if(mid<Q) pr+=` L ${xN(mid)} ${peakY}`;
+      pr+=` L ${rightB} ${baseY+dir*hE}`;
       line(pr,2.4);
-      let pl=`M ${leftB} ${barTop-hE}`;
-      if(mid>=Q) pl+=` L ${xN(mid-Q)} ${barTop-apx}`;
-      pl+=` L ${ex} ${barTop}`;
+      let pl=`M ${leftB} ${baseY+dir*hE}`;
+      if(mid>=Q) pl+=` L ${xN(mid-Q)} ${peakY}`;
+      pl+=` L ${ex} ${baseY}`;
       line(pl,2.4);
       lx = mid<Q ? xN(mid) : xN(mid-Q);
     }
-    const ly=barTop-apx;
+    return lx;
+  }
+  series.forEach((c,i)=>{
+    const lx=head(c, barTop, -1);    // vorderer Stirnkopf (oben)
+    head(c, barBot, +1);             // hinterer Stirnkopf (unten) -> geschlossene Spule
+    const ly=barTop-apx;             // Spulennummer am oberen Scheitel
     svg.appendChild(el('circle',{cx:lx,cy:ly,r:8,fill:'#fff',stroke:col,'stroke-width':1.3}));
     svg.appendChild(el('text',{x:lx,y:ly+3.5,'text-anchor':'middle','font-size':9.5,fill:col,'font-weight':700}, i+1));
   });
-  // Reihenschaltung (unten): Austritt Spule i -> Eintritt Spule i+1, auch mit Rand-Durchlauf
+  // Anschluss-Enden je Spule (Basis fuer Klemmen und spaetere Schaltverbindungen)
   const inX=c=> c.sign>0 ? xG(c.go) : xR(c.ret);
   const outX=c=> c.sign>0 ? xR(c.ret) : xG(c.go);
-  const apxB=apx;   // untere Schenkel exakt so lang wie obere
-  for(let i=0;i<series.length-1;i++){
-    const xa=outX(series[i]), xb=inX(series[i+1]), dd=xb-xa;
-    const dep=apxB*(0.6 + (i%4)/4*0.38);          // gestaffelte Tiefe 60..95% – fuellt den unteren Schenkelbereich
-    if(Math.abs(dd) <= W/2){
-      line(`M ${xa} ${barBot} L ${(xa+xb)/2} ${barBot+dep} L ${xb} ${barBot}`, 1.8, 0.85);
-    } else if(dd>0){                               // kuerzer ueber linken Rand
-      line(`M ${xa} ${barBot} L ${leftB} ${barBot+apxB}`, 1.8, 0.85);
-      line(`M ${rightB} ${barBot+apxB} L ${xb} ${barBot}`, 1.8, 0.85);
-    } else {                                       // kuerzer ueber rechten Rand
-      line(`M ${xa} ${barBot} L ${rightB} ${barBot+apxB}`, 1.8, 0.85);
-      line(`M ${leftB} ${barBot+apxB} L ${xb} ${barBot}`, 1.8, 0.85);
-    }
-  }
-  // Klemmen (mit Anschluss von der Nut nach unten)
+  // Klemmen-Marker U1/U2 im reservierten Bereich unter den Spulen
   const term=(x,label)=>{
-    line(`M ${x} ${barBot} L ${x} ${backBot}`, 2.0);
+    line(`M ${x} ${barBot+apx+6} L ${x} ${backBot}`, 2.0, 0.7);
     svg.appendChild(el('circle',{cx:x,cy:backBot,r:5,fill:col,stroke:'#fff','stroke-width':1.5}));
     svg.appendChild(el('text',{x:x,y:backBot+17,'text-anchor':'middle','font-size':11.5,
       fill:col,'font-weight':700},label));
