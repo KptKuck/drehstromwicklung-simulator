@@ -272,6 +272,7 @@
         <span><span class="lbl">&omega;t</span>
           <input type="range" id="wtSlider" min="0" max="360" value="0" step="2" style="width:140px;vertical-align:middle">
         </span>
+        <span id="poleInfo" title="Anzahl Pole und Unsymmetrie der Pol-Weiten/-Staerken"></span>
       </div>
       <div class="legend" id="legend"></div>
       <div class="svg-scroll"><svg id="schema"></svg></div>
@@ -851,8 +852,48 @@ function drawPoles(svg, x0, dx, Q, yBand, bandH, barBot){
       stroke:'#334155','stroke-dasharray':'4 3','stroke-width':1,opacity:0});
     g.appendChild(bl); bnds.push(bl);
   }
+  const labels=[];   // N/S-Pool (tickSchema positioniert + beschriftet)
+  for(let i=0;i<Math.min(Q,24);i++){
+    const t=el('text',{x:0, y:yBand+28, 'text-anchor':'middle', 'font-size':21, 'font-weight':800,
+      stroke:'#fff','stroke-width':3.5,'paint-order':'stroke', fill:'#334155', opacity:0});
+    g.appendChild(t); labels.push(t);
+  }
   svg.appendChild(g);
-  return {rects, bnds};
+  return {rects, bnds, labels};
+}
+
+/** Pole (zusammenhaengende N/S-Bereiche) der Durchflutungstreppe cum (zyklisch, Q Plateaus).
+ *  Liefert je Pol {sign, width(Nuten), peak(|Theta|max), peakSlot}. */
+function findPoles(cum, Q){
+  const val=k=>cum[((k%Q)+Q)%Q];
+  const sg=k=>(val(k)>=0)?1:-1;
+  let start=-1;
+  for(let k=0;k<Q;k++){ if(sg(k)!==sg(k-1)){ start=k; break; } }   // an einer Polgrenze beginnen
+  if(start<0) return [];
+  const poles=[]; let k=start, done=0;
+  while(done<Q){
+    const s=sg(k); let w=0, peak=-1, area=0, peakSlot=((k%Q)+Q)%Q;
+    while(done<Q && sg(k+w)===s){
+      const v=Math.abs(val(k+w));
+      area+=v;                                       // Pol-Flaeche (Fluss) ~ Integral |Theta|
+      if(v>peak){ peak=v; peakSlot=((k+w)%Q+Q)%Q; }
+      w++; done++;
+    }
+    poles.push({sign:s, width:w, peak, area, peakSlot});
+    k+=w;
+  }
+  return poles;
+}
+
+/** Pol-Unsymmetrie der Wicklung in %: mittlere relative Streuung der Pol-Fluesse (Flaechen)
+ *  ueber eine volle elektrische Periode. Quantisierungs-robust und zeitstabil.
+ *  ~0..10% Ganzloch, hoeher bei Bruchloch/Zahnspulen mit ungleichen Polen. */
+function poleAsymmetry(model){
+  const Q=model.Q;
+  const sp=arr=>{ if(arr.length<2) return 0; const mn=Math.min(...arr),mx=Math.max(...arr),av=arr.reduce((a,b)=>a+b,0)/arr.length; return av>0?(mx-mn)/av*100:0; };
+  let sum=0,n=0;
+  for(let d=0; d<360; d+=12){ sum+=sp(findPoles(mmf(model, d*Math.PI/180).cum, Q).map(p=>p.area)); n++; }
+  return sum/n;
 }
 
 function renderSchema(model){
@@ -862,6 +903,14 @@ function renderSchema(model){
   const Q=model.Q;
   const wnum=(PRESETS.find(p=>!p.name && p.Q===Q && p.poles===model.poles && p.layers===model.layers)||{}).num;
   const lbl=`${wnum?'Nr. '+wnum+' · ':''}Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
+  // Pol-Unsymmetrie der Wicklung (stabil, einmal je Build) -> Anzeige im Simulator-Bedienfeld
+  const _info=document.getElementById('poleInfo');
+  if(_info){
+    const asym=poleAsymmetry(model);
+    const lv = asym<=12 ? ['symmetrisch','#16a34a'] : asym<=30 ? ['leicht unsymmetrisch','#d97706'] : ['stark unsymmetrisch','#dc2626'];
+    _info.textContent = `${model.poles} Pole · Pol-Unsymmetrie ${asym.toFixed(0)}% (${lv[0]})`;
+    _info.style.color=lv[1]; _info.style.fontWeight='700';
+  }
   if(SCHEMA_VIEW==='tracks'){
     const dx=Math.max(40, Math.min(74, 1500/Q));
     const padL=56, padR=30, titleH=32, trackH=262;
@@ -902,7 +951,7 @@ function renderSchema(model){
     drawIron(svg, padL, dx, Q, barTop, barBot);
     if(animState.showPoles){
       const m0=mmf(model,0);
-      schemaAnim={poles:drawPoles(svg, padL, dx, Q, barTop, barBot-barTop, barBot), maxA:Math.max(1e-6, ...m0.cum.map(Math.abs))};
+      schemaAnim={poles:drawPoles(svg, padL, dx, Q, barTop, barBot-barTop, barBot), maxA:Math.max(1e-6, ...m0.cum.map(Math.abs)), x0:padL, dx};
     }
     phases.forEach(ph=> drawPhasePath(svg, model, ph, padL, dx, Q, barTop, barBot, frontTop, backBot));
     drawSlotNumbers(svg, padL, dx, Q, barBot+13);
@@ -1200,6 +1249,17 @@ function tickSchema(){
     for(let k=0;k<bnds.length;k++){
       const a=m.cum[k]||0, b=m.cum[k+1]||0;
       bnds[k].setAttribute('opacity', (a>=0)!==(b>=0) ? '0.55' : '0');
+    }
+    // N/S-Buchstaben in die Polmitten (live mitwandernd)
+    const poles=findPoles(m.cum, CURRENT.Q), labels=schemaAnim.poles.labels, x0=schemaAnim.x0, dx=schemaAnim.dx;
+    for(let i=0;i<labels.length;i++){
+      if(i<poles.length){
+        const p=poles[i];
+        labels[i].setAttribute('x', (x0+(p.peakSlot+0.5)*dx).toFixed(1));
+        labels[i].textContent = p.sign>0 ? 'N' : 'S';
+        labels[i].setAttribute('fill', p.sign>0 ? '#b91c1c' : '#1e3a8a');
+        labels[i].setAttribute('opacity','1');
+      } else labels[i].setAttribute('opacity','0');
     }
   }
 }
