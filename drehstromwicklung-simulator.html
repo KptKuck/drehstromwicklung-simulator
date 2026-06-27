@@ -253,7 +253,7 @@
       </div>
       <div class="legend" id="legend"></div>
       <div class="svg-scroll"><svg id="schema"></svg></div>
-      <div class="note">Folge der durchgezogenen Linie eines Strangs von Klemme 1 (z.&nbsp;B. U1) seriell durch alle Spulen zu Klemme 2 (U2) &ndash; sie zeigt die Verschaltungs-Reihenfolge. Breite Leiter = Spulenseiten in den Nuten; kleine Pfeile = Stromrichtung/Polung bei &omega;t = 0. Vorderer Wickelkopf oben, Verschaltung und Klemmen unten. Zahlen am oberen Wickelkopf = Spulen-Reihenfolge. Bei Zweischicht: Hinleiter (go) links, R&uuml;ckleiter (ret) rechts in der Nut.</div>
+      <div class="note">Folge der durchgezogenen Linie eines Strangs von Klemme 1 (z.&nbsp;B. U1) seriell durch alle Spulen zu Klemme 2 (U2) &ndash; sie zeigt die Verschaltungs-Reihenfolge. Breite Leiter = Spulenseiten in den Nuten; kleine Pfeile = Stromrichtung/Polung bei &omega;t = 0. Vorderer Wickelkopf oben, Verschaltung und Klemmen unten. Zahlen am oberen Wickelkopf = Spulen-Reihenfolge. Bei Zweischicht: R&uuml;ckleiter (ret) links, Hinleiter (go) rechts in der Nut.</div>
     </div>
   </div>
 
@@ -702,6 +702,8 @@ function phaseWiring(coils, Q){
    - Spule bleibt geschlossene Raute (oberer + unterer Wickelkopf).
    - Spulenform umschaltbar: gleiche Weite (Schleife) / konzentrisch (verschachtelt,
      unterschiedliche Weiten, gleiche Nutbelegung und gleicher k_w).
+   - SCHICHTEN (ab Zweischicht): in der Nut steht der Rueckleiter (ret) LINKS, der
+     Hinleiter (go) RECHTS (vertauscht; siehe off/xG/xR in drawPhasePath).
    - Schema-Hoehe gross; komplette Wicklung zoombar (Fit / +/- / Strg+Rad).
 
    Engine-Invarianten (nicht brechen):
@@ -713,9 +715,10 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   const series=coilSeries(model, ph);
   if(!series.length) return;
   const col=phColor(ph);
-  const off=model.layers===2 ? Math.min(7, dx*0.17) : 0;
-  const xG=k=> x0+(k+0.5)*dx-off;     // Hinleiter (go), links
-  const xR=k=> x0+(k+0.5)*dx+off;     // Rueckleiter (ret), rechts
+  // REGEL Schichtdarstellung (ab Zweischicht): Rueckleiter (ret) LINKS, Hinleiter (go) RECHTS in der Nut.
+  const off=model.layers>=2 ? Math.min(7, dx*0.17) : 0;
+  const xG=k=> x0+(k+0.5)*dx+off;     // Hinleiter (go), RECHTS
+  const xR=k=> x0+(k+0.5)*dx-off;     // Rueckleiter (ret), LINKS
   // Spulenseiten als blasse Leiter + deutlicher Polungspfeil
   const bar=(x,up)=>{
     svg.appendChild(el('line',{x1:x,y1:barTop+2,x2:x,y2:barBot-2,stroke:col,
