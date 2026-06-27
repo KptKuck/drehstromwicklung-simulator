@@ -843,12 +843,18 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
 function drawPoles(svg, x0, dx, Q, yBand, bandH, barBot){
   const g=el('g',{id:'poleBand'});
   const rects=[], bnds=[];
-  for(let k=0;k<Q;k++){
-    const r=el('rect',{x:(x0+k*dx).toFixed(1), y:yBand, width:dx.toFixed(1), height:bandH, fill:'#dc2626','fill-opacity':0});
+  // Durchflutungs-Plateau cum[k] liegt ZWISCHEN Leiter k-1 und Leiter k -> zentriert auf den Zahn bei x0+k*dx.
+  // (Leiter k sitzt bei x0+(k+0.5)*dx, dort springt Theta.) Randplateaus auf halbe Breite geklemmt.
+  for(let k=0;k<=Q;k++){
+    let x=x0+(k-0.5)*dx, w=dx;
+    if(k===0){ x=x0; w=dx/2; } else if(k===Q){ x=x0+(Q-0.5)*dx; w=dx/2; }
+    const r=el('rect',{x:x.toFixed(1), y:yBand, width:w.toFixed(1), height:bandH, fill:'#dc2626','fill-opacity':0});
     g.appendChild(r); rects.push(r);
   }
-  for(let k=1;k<Q;k++){
-    const bl=el('line',{x1:(x0+k*dx).toFixed(1), y1:yBand, x2:(x0+k*dx).toFixed(1), y2:barBot,
+  // Polgrenzen sitzen an den Leiterpositionen (dort springt Theta): x0+(k+0.5)*dx
+  for(let k=0;k<Q;k++){
+    const bx=(x0+(k+0.5)*dx).toFixed(1);
+    const bl=el('line',{x1:bx, y1:yBand, x2:bx, y2:barBot,
       stroke:'#334155','stroke-dasharray':'4 3','stroke-width':1,opacity:0});
     g.appendChild(bl); bnds.push(bl);
   }
@@ -1255,7 +1261,7 @@ function tickSchema(){
     for(let i=0;i<labels.length;i++){
       if(i<poles.length){
         const p=poles[i];
-        labels[i].setAttribute('x', (x0+(p.peakSlot+0.5)*dx).toFixed(1));
+        labels[i].setAttribute('x', (x0+p.peakSlot*dx).toFixed(1));   // Pol-Mitte = Zahn bei peakSlot*dx
         labels[i].textContent = p.sign>0 ? 'N' : 'S';
         labels[i].setAttribute('fill', p.sign>0 ? '#b91c1c' : '#1e3a8a');
         labels[i].setAttribute('opacity','1');
