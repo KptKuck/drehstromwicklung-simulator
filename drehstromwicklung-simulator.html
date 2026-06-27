@@ -644,6 +644,10 @@ function drawSlotNumbers(svg, x0, dx, Q, yBase){
 }
 
 /** Ein Strang als durchgehender, verfolgbarer Strompfad (schraege Wickelkoepfe). */
+// WICHTIG: Verschaltungs-Regeln sind in WICKELSCHEMA-REGELN.md festgelegt -> vor Aenderung lesen!
+// Kurz: U1 an innerer Spule, innen->aussen; jede Spule go->ret; Schaltverbindung startet IMMER
+// rechts (ret-Seite); Verbindungen gerade, nur kurze Nut-zu-Nut-Spruenge gebogen (rechts);
+// auf halber Schenkelhoehe; U1/U2 als einzige Ausfuehrungen ganz unten.
 function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, backBot){
   const series=coilSeries(model, ph);
   if(!series.length) return;
