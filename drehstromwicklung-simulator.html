@@ -644,10 +644,42 @@ function drawSlotNumbers(svg, x0, dx, Q, yBase){
 }
 
 /** Ein Strang als durchgehender, verfolgbarer Strompfad (schraege Wickelkoepfe). */
-// WICHTIG: Verschaltungs-Regeln sind in WICKELSCHEMA-REGELN.md festgelegt -> vor Aenderung lesen!
-// Kurz: U1 an innerer Spule, innen->aussen; jede Spule go->ret; Schaltverbindung startet IMMER
-// rechts (ret-Seite); Verbindungen gerade, nur kurze Nut-zu-Nut-Spruenge gebogen (rechts);
-// auf halber Schenkelhoehe; U1/U2 als einzige Ausfuehrungen ganz unten.
+/* =====================================================================================
+   WICKELSCHEMA – VERBINDLICHE REGELN (mit Auftraggeber festgelegt)
+   Vor jeder Aenderung hier lesen. Bestehende Regeln NICHT neu interpretieren –
+   nur ergaenzen, wenn der Auftraggeber eine Regel ausdruecklich aendert.
+
+   Begriffe:
+   - Scheitel = hoechster/tiefster Punkt eines Wickelkopfs (Apex).
+   - oberer/unterer Wickelkopf = Verbindung go<->ret oben bzw. unten ("Dach").
+   - Schenkel = einzelne schraege Gerade eines Wickelkopfs (linker/rechter).
+   - Nutleiter/Spulenseite: go = Hinleiter (links, ANFANG), ret = Rueckleiter (rechts, ENDE).
+   - Schaltverbindung/Uebergang = Verbindung einer Spule zur naechsten (Reihe).
+   - Ausfuehrung/Klemme = Strang-Endpunkt (U1, U2, ...). Polgruppe = benachbarte Spulen.
+
+   Verschaltung (Reihenschaltung eines Strangs):
+   1) U1 (Anfang) startet IMMER an der INNEREN Spule der Polgruppe; verdrahtet wird
+      von INNEN nach AUSSEN. U2 (Ende) an der AEUSSEREN Spule.
+   2) Jede Spule wird go -> ret (links -> rechts) durchlaufen.
+   3) Jede Schaltverbindung startet IMMER im rechten Teil (ret-Seite) der Spule und
+      laeuft zur go-Seite der naechsten Spule. KEIN abwechselndes Links/Rechts.
+   4) Schaltverbindungen zwischen Spulen: GERADE. Nur kurze Nut-zu-Nut-Uebergaenge
+      (benachbarte Nuten): GEBOGEN, und nur rechts.
+   5) Schaltverbindungen/Uebergaenge liegen auf HALBER HOEHE der unteren Schenkel.
+   6) Ausfuehrungen U1/U2 ganz unten (senkrecht von der Nut bis zur Klemme). Nur U1
+      (Anfang) und U2 (Ende) gehen ganz unten; dazwischen nur Schaltverbindungen.
+
+   Darstellung:
+   - Spule bleibt geschlossene Raute (oberer + unterer Wickelkopf).
+   - Spulenform umschaltbar: gleiche Weite (Schleife) / konzentrisch (verschachtelt,
+     unterschiedliche Weiten, gleiche Nutbelegung und gleicher k_w).
+   - Schema-Hoehe gross; komplette Wicklung zoombar (Fit / +/- / Strg+Rad).
+
+   Engine-Invarianten (nicht brechen):
+   - Feste Nutenzahlen 12/18/24/36/48; Drehzahlen nur synchron (3000/1500/1000/750/...).
+   - Zonenzuordnung ganzzahlig-exakt (symmetrisch auch bei Bruchloch).
+   - Selbsttest 14/14; Render-Scan 0 fehlerhafte Attribute ueber alle Presets.
+   ===================================================================================== */
 function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, backBot){
   const series=coilSeries(model, ph);
   if(!series.length) return;
