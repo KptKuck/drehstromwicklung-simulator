@@ -1436,16 +1436,24 @@ function runSelfTest(){
   // 5./7. Oberwelle kleiner als Grundwelle
   check('kw5<kw1 (36/4)', Math.abs(wfFull[5].kw)<wfFull[1].kw);
 
-  // --- VERDRAHTUNGS-REGELN: drawPhasePath zeichnet exakt das, was phaseWiring liefert ---
-  const ccU = buildCoils(24, 4, 1, 6, 60, true).coils.filter(c=>c.phase==='U');   // 24/4 konzentrisch
-  const Wu = phaseWiring(ccU, 24);
-  check('Verdrahtung: U1 = Anfang go (LINKS), innere Teilspule',
-    Wu.U1.side==='go' && Wu.U1.coil===Wu.spulen[0][0]);
-  check('Verdrahtung: U2 = Ende ret (RECHTS)', Wu.U2.side==='ret');
-  check('Verdrahtung: Schaltverbindung startet RECHTS (ret)',
-    Wu.schalt.length>0 && Wu.schalt.every(s=>s.from.side==='ret'), '(Anfang darf NIE links sein)');
-  check('Verdrahtung: Teilspulen-Uebergang ret(innen)->go(naechste)',
-    Wu.uebergaenge.length>0 && Wu.uebergaenge.every(u=>u.from.side==='ret' && u.to.side==='go'));
+  // --- VERDRAHTUNGS-REGELN: GENERISCH ueber ALLE Wicklungen geprueft (drawPhasePath nutzt phaseWiring) ---
+  let wGes=0, wBad='';
+  for(const conc of [false,true]) for(const p of PRESETS.filter(x=>!x.name)){
+    const y = p.y!=null ? p.y : Math.round(p.Q/p.poles);
+    const cc = buildCoils(p.Q, p.poles, p.layers, y, 60, conc).coils;
+    for(const ph of PHASES){
+      const phc = cc.filter(c=>c.phase===ph); if(!phc.length) continue;
+      const W = phaseWiring(phc, p.Q); wGes++;
+      const ok = W.U1.side==='go' && W.U2.side==='ret'
+        && W.schalt.every(s=>s.from.side==='ret' && s.to.side==='go')
+        && W.uebergaenge.every(u=>u.from.side==='ret' && u.to.side==='go');
+      if(!ok && !wBad) wBad=`${p.Q}/${p.poles} ${ph} conc=${conc} (U1=${W.U1.side} U2=${W.U2.side})`;
+    }
+  }
+  check(`Verdrahtung generisch, ${wGes} Faelle: U1 links/go, U2 rechts/ret, Schaltverbindung startet rechts, Uebergang ret->go`, !wBad, wBad);
+  const Wex = phaseWiring(buildCoils(24,4,1,6,60,true).coils.filter(c=>c.phase==='U'), 24);   // konkretes Beispiel
+  check(`Beispiel 24/4 U konz.: U1 go/Nut ${Wex.U1.coil.go+1} (links), U2 ret/Nut ${Wex.U2.coil.ret+1} (rechts)`,
+    Wex.U1.side==='go' && Wex.U2.side==='ret');
 
   const card=document.getElementById('selftestCard');
   card.style.display='';
