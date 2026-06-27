@@ -872,20 +872,29 @@ function drawPoles(svg, x0, dx, Q, yBand, bandH, barBot){
  *  Liefert je Pol {sign, width(Nuten), peak(|Theta|max), peakSlot}. */
 function findPoles(cum, Q){
   const val=k=>cum[((k%Q)+Q)%Q];
-  const sg=k=>(val(k)>=0)?1:-1;
+  // Vorzeichen mit Toleranz: Fast-Null-Plateaus (an Polgrenzen) erben das vorherige echte
+  // Vorzeichen, statt per >=0 willkuerlich als Nordpol gezaehlt zu werden (sonst Schein-Pole).
+  let maxA=0; for(let k=0;k<Q;k++) maxA=Math.max(maxA, Math.abs(val(k)));
+  const eps=maxA*1e-6;
+  const s=new Array(Q);
+  for(let k=0;k<Q;k++){ const v=val(k); s[k]= v>eps?1 : v<-eps?-1 : 0; }
+  if(s.every(x=>x===0)) return [];                                            // alles ~0 -> kein Polmuster
+  let last=0; for(let k=0;k<Q;k++) if(s[k]){ last=s[k]; break; }
+  for(let i=0,k=0;i<2*Q;i++,k=(k+1)%Q){ if(s[k]) last=s[k]; else s[k]=last; } // Nullen zyklisch fuellen
+  const sg=k=>s[((k%Q)+Q)%Q];
   let start=-1;
   for(let k=0;k<Q;k++){ if(sg(k)!==sg(k-1)){ start=k; break; } }   // an einer Polgrenze beginnen
   if(start<0) return [];
   const poles=[]; let k=start, done=0;
   while(done<Q){
-    const s=sg(k); let w=0, peak=-1, area=0, peakSlot=((k%Q)+Q)%Q;
-    while(done<Q && sg(k+w)===s){
+    const sn=sg(k); let w=0, peak=-1, area=0, peakSlot=((k%Q)+Q)%Q;
+    while(done<Q && sg(k+w)===sn){
       const v=Math.abs(val(k+w));
       area+=v;                                       // Pol-Flaeche (Fluss) ~ Integral |Theta|
       if(v>peak){ peak=v; peakSlot=((k+w)%Q+Q)%Q; }
       w++; done++;
     }
-    poles.push({sign:s, width:w, peak, area, peakSlot});
+    poles.push({sign:sn, width:w, peak, area, peakSlot});
     k+=w;
   }
   return poles;
