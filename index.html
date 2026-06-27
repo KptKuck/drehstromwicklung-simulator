@@ -650,26 +650,25 @@ function drawSlotNumbers(svg, x0, dx, Q, yBase){
    Vor jeder Aenderung hier lesen. Bestehende Regeln NICHT neu interpretieren –
    nur ergaenzen, wenn der Auftraggeber eine Regel ausdruecklich aendert.
 
-   Begriffe:
-   - Scheitel = hoechster/tiefster Punkt eines Wickelkopfs (Apex).
-   - oberer/unterer Wickelkopf = Verbindung go<->ret oben bzw. unten ("Dach").
-   - Schenkel = einzelne schraege Gerade eines Wickelkopfs (linker/rechter).
+   Begriffe / Hierarchie (WICHTIG - Spule und Teilspule NICHT verwechseln):
+   - SPULE (Spulengruppe) = Wicklungseinheit EINER Polgruppe, als eine Spule kontinuierlich
+     gewickelt. Besteht aus mehreren TEILSPULEN.
+   - TEILSPULE = eine einzelne konzentrische Windungsebene (eine Weite) INNERHALB einer Spule.
+   - Scheitel = tiefster/hoechster Punkt eines Wickelkopfs. Schenkel = schraege Gerade davon.
    - Nutleiter/Spulenseite: go = Hinleiter (links, ANFANG), ret = Rueckleiter (rechts, ENDE).
-   - Schaltverbindung/Uebergang = Verbindung einer Spule zur naechsten (Reihe).
-   - Ausfuehrung/Klemme = Strang-Endpunkt (U1, U2, ...). Polgruppe = benachbarte Spulen.
+   - Ausfuehrung/Klemme = Strang-Endpunkt (U1, U2, ...).
 
    Verschaltung (Reihenschaltung eines Strangs):
-   1) U1 (Anfang) startet IMMER an der INNEREN Spule der Polgruppe; verdrahtet wird
-      von INNEN nach AUSSEN. U2 (Ende) an der AEUSSEREN Spule.
-   2) Jede Spule wird go -> ret (links -> rechts) durchlaufen.
-   3) Jede Schaltverbindung startet am ENDE (ret-Seite, rechts) der Spule und fuehrt
-      zum ANFANG (go-Seite, links) der naechsten Spule. KEIN abwechselndes Links/Rechts.
-   4) Schaltverbindungen sind GERADE und RECHTWINKLIG (drei gerade Segmente): vom Ende
-      (ret) senkrecht NACH UNTEN, dann HORIZONTAL zur naechsten Spule, dann senkrecht
-      HOCH zum Anfang (go) der naechsten Spule. Keine schraegen Linien, keine Boegen.
-   5) Die horizontale Verschaltungs-Ebene liegt UNTER den unteren Wickelkoepfen.
-   6) Ausfuehrungen U1/U2 ganz unten (senkrecht von der Nut bis zur Klemme). Nur U1
-      (Anfang) und U2 (Ende) gehen ganz unten; dazwischen nur Schaltverbindungen.
+   1) U1 startet an der INNEREN Teilspule der ERSTEN Spule; je Spule wird von INNEN
+      nach AUSSEN verdrahtet. U2 am Ausgang der LETZTEN Spule.
+   2) TEILSPULEN-UEBERGANG (innerhalb EINER Spule, Teilspule->Teilspule, durchgehender
+      Wickeldraht): kurzer GEBOGENER Bogen an den ret-Schenkeln (RECHTS), auf HALBER
+      HOEHE der unteren Schenkel.
+   3) SCHALTVERBINDUNG (ZWISCHEN Spulen, separater Draht): RECHTWINKLIG - vom Ausgang der
+      Spule senkrecht runter, horizontal zur naechsten Spule, senkrecht hoch zum Eingang.
+   4) ABSTAENDE: Alles unterhalb der Nut (Wickelkoepfe, Teilspulen-Uebergaenge,
+      Schaltverbindungen, Klemmen) teilt sich den vertikalen Platz GLEICHMAESSIG (gerecht).
+   5) Ausfuehrungen U1/U2 ganz unten (senkrecht von der Nut bis zur Klemme).
 
    Darstellung:
    - Spule bleibt geschlossene Raute (oberer + unterer Wickelkopf).
@@ -743,8 +742,10 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     svg.appendChild(el('text',{x:h.x,y:ly+3.5,'text-anchor':'middle','font-size':9.5,fill:col,'font-weight':700}, i+1));
   });
   if(tips.length){
-    const phaseIdx=(SCHEMA_FILTER==='all')?PHASES.indexOf(ph):0;
-    // Polgruppen (zusammenhaengende Nuten); je Gruppe von INNEN (schmalste Spule) nach AUSSEN
+    // Schenkel-Mittelpunkte (halbe Hoehe) fuer Teilspulen-Uebergaenge
+    const lsm=t=>({x:(t.gx+t.mx)/2, y:barBot+t.a*0.5});   // linker Schenkel (go)
+    const rsm=t=>({x:(t.rx+t.mx)/2, y:barBot+t.a*0.5});   // rechter Schenkel (ret)
+    // Polgruppen = SPULEN; je Spule die TEILSPULEN von INNEN (schmalste) nach AUSSEN
     const ord=tips.slice().sort((a,b)=>a.c.go-b.c.go);
     const groups=[]; let cur=[ord[0]];
     for(let i=1;i<ord.length;i++){
@@ -753,26 +754,41 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
       else { groups.push(cur); cur=[ord[i]]; }
     }
     groups.push(cur);
-    const wid=t=>((t.c.ret-t.c.go)%Q+Q)%Q;               // Spulenweite
-    const path=[];
-    for(const grp of groups) path.push(...grp.map((t,i)=>({t,i})).sort((a,b)=>(wid(a.t)-wid(b.t))||(a.i-b.i)).map(o=>o.t));
-    // Schaltverbindungen RECHTWINKLIG: vom Ende (ret) senkrecht nach unten, horizontal zur
-    // naechsten Spule, senkrecht hoch zum Anfang (go) der naechsten. Ebene unter den Wickelkoepfen.
-    const linkBase=barBot+apxMax+12;
-    for(let k=0;k<path.length-1;k++){
-      const ax=path[k].rx, bx=path[k+1].gx;              // Ende (ret) -> Anfang (go) der naechsten Spule
-      const Y=linkBase + (k%4)*9 + phaseIdx*7;           // leicht gestaffelt gegen Ueberlappung
+    const wid=t=>((t.c.ret-t.c.go)%Q+Q)%Q;
+    const spulen=groups.map(g=> g.map((t,i)=>({t,i})).sort((a,b)=>(wid(a.t)-wid(b.t))||(a.i-b.i)).map(o=>o.t));
+
+    // (A) TEILSPULEN-UEBERGAENGE innerhalb einer Spule: kurzer Bogen an den Schenkeln (halbe Hoehe),
+    //     erster Uebergang rechts (ret-Schenkel), danach abwechselnd.
+    for(const ts of spulen){
+      for(let i=0;i<ts.length-1;i++){
+        const rechts=(i%2===0);
+        const A=rechts?rsm(ts[i]):lsm(ts[i]);
+        const B=rechts?rsm(ts[i+1]):lsm(ts[i+1]);
+        const my=Math.max(A.y,B.y)+11;
+        line(`M ${A.x.toFixed(1)} ${A.y.toFixed(1)} Q ${((A.x+B.x)/2).toFixed(1)} ${my.toFixed(1)} ${B.x.toFixed(1)} ${B.y.toFixed(1)}`, 2.4);
+      }
+    }
+    // Eingang (innere Teilspule, go) und Ausgang (aeussere Teilspule, Seite nach Parität) je Spule
+    const inX = ts => ts[0].gx;
+    const outX = ts => { const last=ts[ts.length-1]; return (ts.length%2===1)? last.rx : last.gx; };
+
+    // (B) SCHALTVERBINDUNGEN zwischen Spulen: rechtwinklig; Ebenen teilen sich den Platz
+    //     unter den Wickelkoepfen bis ueber die Klemmen GLEICHMAESSIG.
+    const top0=barBot+apxMax+10, bot0=backBot-22, nSV=spulen.length-1;
+    for(let k=0;k<nSV;k++){
+      const ax=outX(spulen[k]), bx=inX(spulen[k+1]);
+      const Y=top0 + (bot0-top0)*(k+1)/(nSV+1);            // gleichmaessig verteilt (gerecht)
       line(`M ${ax.toFixed(1)} ${barBot} L ${ax.toFixed(1)} ${Y.toFixed(1)} L ${bx.toFixed(1)} ${Y.toFixed(1)} L ${bx.toFixed(1)} ${barBot}`, 2.2);
     }
-    // Ausfuehrungen ganz unten: U1 an der inneren Spule (Eintritt go), U2 am Austritt (ret) der aeusseren
+    // (C) Ausfuehrungen U1/U2 ganz unten
     const term=(x,label)=>{
       line(`M ${x.toFixed(1)} ${barBot} L ${x.toFixed(1)} ${backBot}`, 2.2);
       svg.appendChild(el('circle',{cx:x,cy:backBot,r:5.5,fill:col,stroke:'#fff','stroke-width':1.5}));
       svg.appendChild(el('text',{x:x,y:backBot+17,'text-anchor':'middle','font-size':11.5,
         fill:col,'font-weight':700},label));
     };
-    term(path[0].gx, TERM[ph][0]);                       // U1 an der inneren Spule (go-Seite)
-    term(path[path.length-1].rx, TERM[ph][1]);           // U2 am Austritt (ret-Seite) der aeusseren Spule
+    term(inX(spulen[0]), TERM[ph][0]);                     // U1 an innerer Teilspule der ersten Spule
+    term(outX(spulen[spulen.length-1]), TERM[ph][1]);      // U2 am Ausgang der letzten Spule
   }
 }
 
