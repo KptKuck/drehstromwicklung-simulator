@@ -241,8 +241,8 @@
           </span></span>
         <span><span class="lbl">Spulensprung</span>
           <span class="seg" id="coilSeg">
-            <button data-conc="0" class="active">gleiche Weite</button>
-            <button data-conc="1">konzentrisch</button>
+            <button data-conc="0">gleiche Weite</button>
+            <button data-conc="1" class="active">konzentrisch</button>
           </span></span>
         <span><span class="lbl">Zoom</span>
           <span class="seg" id="zoomSeg">
@@ -617,7 +617,7 @@ function phColor(ph){ return PHASE_COLOR[ph]; }
 /* --- Wickelschema (abgewickelt, verfolgbar) --- */
 let SCHEMA_VIEW='overview';   // 'overview' | 'tracks'
 let SCHEMA_FILTER='all';      // 'all' | 'U' | 'V' | 'W'
-let COIL_CONCENTRIC=false;    // false=Schleife (gleiche Weite), true=konzentrisch (ungleiche Weite)
+let COIL_CONCENTRIC=true;     // Default: konzentrisch (verschachtelt); false=Schleife (gleiche Weite)
 let SCHEMA_ZOOM=1;            // Zoomfaktor des Wickelschema-SVG (1 = einpassen/100%)
 const TERM={U:['U1','U2'], V:['V1','V2'], W:['W1','W2']};
 
