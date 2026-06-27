@@ -921,10 +921,20 @@ function renderSchema(model){
   // Pol-Unsymmetrie der Wicklung (stabil, einmal je Build) -> Anzeige im Simulator-Bedienfeld
   const _info=document.getElementById('poleInfo');
   if(_info){
-    const asym=poleAsymmetry(model);
-    const lv = asym<=12 ? ['symmetrisch','#16a34a'] : asym<=30 ? ['leicht unsymmetrisch','#d97706'] : ['stark unsymmetrisch','#dc2626'];
-    _info.textContent = `${model.poles} Pole · Pol-Unsymmetrie ${asym.toFixed(0)}% (${lv[0]})`;
-    _info.style.color=lv[1]; _info.style.fontWeight='700';
+    // Symmetrie-Urteil aus dem Nenner n von q=Q/(3*2p) gekuerzt: n in {1,2} -> symmetrisch
+    // (Restprozent ist nur Nutquantisierung), n>=3 -> Bruchloch mit Subharmonischen -> unsymmetrisch.
+    const g=gcd(model.Q, 3*model.poles), z=model.Q/g, n=3*model.poles/g;
+    const qStr = n===1 ? `${z}` : `${z}/${n}`;
+    if(n<=2){
+      _info.textContent = `${model.poles} Pole · q=${qStr} · symmetrisch`;
+      _info.style.color='#16a34a';
+    } else {
+      const asym=poleAsymmetry(model);
+      const stark = asym>60;
+      _info.textContent = `${model.poles} Pole · Bruchloch q=${qStr} · Pol-Unsymmetrie ${asym.toFixed(0)}% (${stark?'stark unsymmetrisch':'unsymmetrisch'})`;
+      _info.style.color = stark?'#dc2626':'#d97706';
+    }
+    _info.style.fontWeight='700';
   }
   if(SCHEMA_VIEW==='tracks'){
     const dx=Math.max(40, Math.min(74, 1500/Q));
