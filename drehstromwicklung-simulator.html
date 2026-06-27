@@ -20,13 +20,13 @@
   header .sub{color:#9fb0c7;font-size:12.5px}
   .wrap{max-width:1760px;margin:0 auto;padding:18px}
   /* Vollbild-Wickelschema (Hauptspalte) + Nebendiagramme als Sidebar */
-  .layout-2col{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;align-items:start}
+  .layout-2col{display:grid;grid-template-columns:minmax(0,1fr) 430px;gap:18px;align-items:start}
   .main-col{min-width:0}
   .side-col{display:flex;flex-direction:column;gap:18px;min-width:0}
   .side-col .grid2{grid-template-columns:1fr}
   .side-col svg{width:100%}
   .side-col .controls{grid-template-columns:1fr 1fr}
-  .side-col .wsel-results{max-height:150px}
+  .side-col .wsel-results{max-height:320px}
   @media(max-width:1080px){.layout-2col{grid-template-columns:1fr}.main-col .card{position:static}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
     box-shadow:var(--shadow);margin-bottom:18px;overflow:hidden}
