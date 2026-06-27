@@ -661,11 +661,13 @@ function drawSlotNumbers(svg, x0, dx, Q, yBase){
    Verschaltung (Reihenschaltung eines Strangs):
    1) U1 startet an der INNEREN Teilspule der ERSTEN Spule; je Spule wird von INNEN
       nach AUSSEN verdrahtet. U2 am Ausgang der LETZTEN Spule.
-   2) TEILSPULEN-UEBERGANG (innerhalb EINER Spule, Teilspule->Teilspule, durchgehender
-      Wickeldraht): kurzer GEBOGENER Bogen an den ret-Schenkeln (RECHTS), auf HALBER
-      HOEHE der unteren Schenkel.
-   3) SCHALTVERBINDUNG (ZWISCHEN Spulen, separater Draht): RECHTWINKLIG - vom Ausgang der
-      Spule senkrecht runter, horizontal zur naechsten Spule, senkrecht hoch zum Eingang.
+   2) SCHALTVERBINDUNG (ZWISCHEN Spulen, separater Draht) startet IMMER RECHTS - am ret der
+      AEUSSEREN Teilspule (= Ausgang der Spule), NIE links. RECHTWINKLIG: senkrecht runter,
+      horizontal zur naechsten Spule, senkrecht hoch zum Eingang (innere Teilspule).
+   3) TEILSPULEN-UEBERGANG (innerhalb EINER Spule): kurzer GEBOGENER Bogen an den Schenkeln,
+      auf HALBER HOEHE. Die Seite folgt aus Regel 2 (Spule muss rechts enden): bei 2 Teil-
+      spulen sitzt der Uebergang LINKS (go-Schenkel). Uebergang und Schaltverbindung liegen
+      IMMER auf gegenueberliegenden Seiten der Spule.
    4) ABSTAENDE: Alles unterhalb der Nut (Wickelkoepfe, Teilspulen-Uebergaenge,
       Schaltverbindungen, Klemmen) teilt sich den vertikalen Platz GLEICHMAESSIG (gerecht).
    5) Ausfuehrungen U1/U2 ganz unten (senkrecht von der Nut bis zur Klemme).
@@ -757,23 +759,25 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     const wid=t=>((t.c.ret-t.c.go)%Q+Q)%Q;
     const spulen=groups.map(g=> g.map((t,i)=>({t,i})).sort((a,b)=>(wid(a.t)-wid(b.t))||(a.i-b.i)).map(o=>o.t));
 
-    // (A) TEILSPULEN-UEBERGAENGE innerhalb einer Spule: kurzer Bogen an den Schenkeln (halbe Hoehe),
-    //     erster Uebergang rechts (ret-Schenkel), danach abwechselnd.
+    // Ausgang IMMER rechts: jede Spule endet am ret der AEUSSEREN Teilspule -> Schaltverbindung
+    // startet rechts. Die Uebergangs-Seiten ergeben sich rueckwaerts (letzter Uebergang links).
+    const inX  = ts => (ts.length%2===0) ? ts[0].rx : ts[0].gx;   // Eingang der inneren Teilspule
+    const outX = ts => ts[ts.length-1].rx;                        // Ausgang = ret aussen (RECHTS)
+
+    // (A) TEILSPULEN-UEBERGAENGE: kurzer Bogen an den Schenkeln (halbe Hoehe). Seite so, dass die
+    //     Spule rechts endet -> Uebergang(i) rechts wenn (m-1-i) gerade, sonst links.
     for(const ts of spulen){
-      for(let i=0;i<ts.length-1;i++){
-        const rechts=(i%2===0);
+      const m=ts.length;
+      for(let i=0;i<m-1;i++){
+        const rechts=((m-1-i)%2===0);
         const A=rechts?rsm(ts[i]):lsm(ts[i]);
         const B=rechts?rsm(ts[i+1]):lsm(ts[i+1]);
         const my=Math.max(A.y,B.y)+11;
         line(`M ${A.x.toFixed(1)} ${A.y.toFixed(1)} Q ${((A.x+B.x)/2).toFixed(1)} ${my.toFixed(1)} ${B.x.toFixed(1)} ${B.y.toFixed(1)}`, 2.4);
       }
     }
-    // Eingang (innere Teilspule, go) und Ausgang (aeussere Teilspule, Seite nach Parität) je Spule
-    const inX = ts => ts[0].gx;
-    const outX = ts => { const last=ts[ts.length-1]; return (ts.length%2===1)? last.rx : last.gx; };
-
-    // (B) SCHALTVERBINDUNGEN zwischen Spulen: rechtwinklig; Ebenen teilen sich den Platz
-    //     unter den Wickelkoepfen bis ueber die Klemmen GLEICHMAESSIG.
+    // (B) SCHALTVERBINDUNGEN zwischen Spulen: starten IMMER RECHTS (ret) am Ausgang, rechtwinklig
+    //     zum Eingang der naechsten Spule. Ebenen teilen sich den Platz GLEICHMAESSIG.
     const top0=barBot+apxMax+10, bot0=backBot-22, nSV=spulen.length-1;
     for(let k=0;k<nSV;k++){
       const ax=outX(spulen[k]), bx=inX(spulen[k+1]);
