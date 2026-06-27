@@ -251,6 +251,28 @@
             <button data-zoom="in" title="vergroessern">+</button>
           </span></span>
       </div>
+      <div class="schema-ctl no-print">
+        <span><span class="lbl">Drehfeld</span>
+          <span class="seg"><button id="fieldPlayBtn">&#9658; Start</button></span></span>
+        <span><span class="lbl">Pfeile</span>
+          <span class="seg" id="arrowSeg">
+            <button data-arr="live" class="active">live</button>
+            <button data-arr="0">&omega;t=0</button>
+          </span></span>
+        <span><span class="lbl">Pole</span>
+          <span class="seg" id="poleSeg">
+            <button data-pole="1" class="active">ein</button>
+            <button data-pole="0">aus</button>
+          </span></span>
+        <span><span class="lbl">Drehsinn</span>
+          <span class="seg" id="seqSeg">
+            <button data-seq="1" class="active">UVW</button>
+            <button data-seq="-1">UWV</button>
+          </span></span>
+        <span><span class="lbl">&omega;t</span>
+          <input type="range" id="wtSlider" min="0" max="360" value="0" step="2" style="width:140px;vertical-align:middle">
+        </span>
+      </div>
       <div class="legend" id="legend"></div>
       <div class="svg-scroll"><svg id="schema"></svg></div>
       <div class="note">Folge der durchgezogenen Linie eines Strangs von Klemme 1 (z.&nbsp;B. U1) seriell durch alle Spulen zu Klemme 2 (U2) &ndash; sie zeigt die Verschaltungs-Reihenfolge. Breite Leiter = Spulenseiten in den Nuten; kleine Pfeile = Stromrichtung/Polung bei &omega;t = 0. Vorderer Wickelkopf oben, Verschaltung und Klemmen unten. Zahlen am oberen Wickelkopf = Spulen-Reihenfolge. Bei Zweischicht: R&uuml;ckleiter (ret) links, Hinleiter (go) rechts in der Nut.</div>
@@ -499,14 +521,18 @@ function buildCoils(Q, poles, layers, y, zoneWidth, concentric){
   return {coils, top, bot, slots};
 }
 
+/** Momentane Strangstroeme bei wt (Einheit 1); Drehsinn seq (+1 = UVW Rechtslauf). */
+function phaseCurrents(wt){
+  const w = animState.seq * wt;
+  return { U:Math.cos(w), V:Math.cos(w-2*Math.PI/3), W:Math.cos(w+2*Math.PI/3) };
+}
+/** Stromrichtungs-Pfeil (Dreieck) als SVG-Pfad; t=-1 zeigt hoch, +1 runter. */
+function tri(x,my,t){ return `M ${x} ${my+t*9} L ${x-5} ${my+t*1} L ${x+5} ${my+t*1} Z`; }
+
 /** MMK-Treppenkurve zum Zeitpunkt wt (rad). Liefert {x[],y[],fund[]}. */
 function mmf(model, wt){
   const {Q, layers, top, bot, params} = model;
-  const cur = {
-    U: Math.cos(wt),
-    V: Math.cos(wt - 2*Math.PI/3),
-    W: Math.cos(wt + 2*Math.PI/3),
-  };
+  const cur = phaseCurrents(wt);
   // Ampere-Leiter je Nut
   const slotMMF = new Array(Q).fill(0);
   for(let k=0;k<Q;k++){
@@ -620,6 +646,10 @@ let SCHEMA_FILTER='U';        // Default: nur Strang U; 'all' | 'U' | 'V' | 'W'
 let COIL_CONCENTRIC=true;     // Default: konzentrisch (verschachtelt); false=Schleife (gleiche Weite)
 let SCHEMA_ZOOM=1;            // Zoomfaktor des Wickelschema-SVG
 let SCHEMA_FIT=true;         // true = komplette Wicklung automatisch einpassen (Default)
+// --- Elektrischer Drehfeld-Simulator (Zeit-Animation + echte Pole) ---
+let animState = { wt:0, playing:false, lastTs:0, liveArrows:true, showPoles:true, seq:1 };
+let SCHEMA_ARROWS = [];      // je renderSchema neu: {node,x,my,phase,coilSign,side} der Stromrichtungspfeile
+let schemaAnim = null;       // je renderSchema neu: {poles:[rect]|null, maxA} fuer das Polband
 const TERM={U:['U1','U2'], V:['V1','V2'], W:['W1','W2']};
 
 /** Spulen eines Strangs in Verschaltungs-Reihenfolge (nach Hinleiter-Nut). */
@@ -719,15 +749,16 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   const off=model.layers>=2 ? Math.min(7, dx*0.17) : 0;
   const xG=k=> x0+(k+0.5)*dx+off;     // Hinleiter (go), RECHTS
   const xR=k=> x0+(k+0.5)*dx-off;     // Rueckleiter (ret), LINKS
-  // Spulenseiten als blasse Leiter + deutlicher Polungspfeil
-  const bar=(x,up)=>{
+  // Spulenseiten als blasse Leiter + Polungspfeil (Pfeil zeitabhaengig -> fuer Animation registriert)
+  const bar=(x,upStatic,coilSign,side)=>{
     svg.appendChild(el('line',{x1:x,y1:barTop+2,x2:x,y2:barBot-2,stroke:col,
       'stroke-width':8,opacity:0.14,'stroke-linecap':'round'}));
-    const my=(barTop+barBot)/2, t=up?-1:1;
-    svg.appendChild(el('path',{d:`M ${x} ${my+t*9} L ${x-5} ${my+t*1} L ${x+5} ${my+t*1} Z`,
-      fill:col,opacity:0.85}));
+    const my=(barTop+barBot)/2, t=upStatic?-1:1;
+    const arrow=el('path',{d:tri(x,my,t),fill:col,opacity:0.85});
+    svg.appendChild(arrow);
+    SCHEMA_ARROWS.push({node:arrow, x, my, phase:ph, coilSign, side});
   };
-  series.forEach(c=>{ bar(xG(c.go), c.sign>0); bar(xR(c.ret), c.sign<0); });
+  series.forEach(c=>{ bar(xG(c.go), c.sign>0, c.sign, 'go'); bar(xR(c.ret), c.sign<0, c.sign, 'ret'); });
   // Stirnkoepfe (oben): immer von go nach go+y; bei Ueberlauf Rand-Durchlauf
   const y=model.y;
   const xN=p=> x0+(p+0.5)*dx;
@@ -806,9 +837,28 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   }
 }
 
+/** Polband (echte Pole aus der Durchflutung): Q farbige Felder + Polgrenz-Linien.
+ *  Geometrie fest; tickSchema setzt spaeter nur fill/fill-opacity bzw. Polgrenz-opacity. */
+function drawPoles(svg, x0, dx, Q, yBand, bandH, barBot){
+  const g=el('g',{id:'poleBand'});
+  const rects=[], bnds=[];
+  for(let k=0;k<Q;k++){
+    const r=el('rect',{x:(x0+k*dx).toFixed(1), y:yBand, width:dx.toFixed(1), height:bandH, fill:'#dc2626','fill-opacity':0});
+    g.appendChild(r); rects.push(r);
+  }
+  for(let k=1;k<Q;k++){
+    const bl=el('line',{x1:(x0+k*dx).toFixed(1), y1:yBand, x2:(x0+k*dx).toFixed(1), y2:barBot,
+      stroke:'#334155','stroke-dasharray':'4 3','stroke-width':1,opacity:0});
+    g.appendChild(bl); bnds.push(bl);
+  }
+  svg.appendChild(g);
+  return {rects, bnds};
+}
+
 function renderSchema(model){
   const svg=document.getElementById('schema');
   clear(svg);
+  SCHEMA_ARROWS=[]; schemaAnim=null;        // Sammler je Build zuruecksetzen
   const Q=model.Q;
   const wnum=(PRESETS.find(p=>!p.name && p.Q===Q && p.poles===model.poles && p.layers===model.layers)||{}).num;
   const lbl=`${wnum?'Nr. '+wnum+' · ':''}Q=${Q}, 2p=${model.poles}, y=${model.y}, ${model.layers===1?'Einschicht':'Zweischicht'}`;
@@ -850,9 +900,14 @@ function renderSchema(model){
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
       lbl+(SCHEMA_FILTER!=='all'?` — nur Strang ${SCHEMA_FILTER}`:'')));
     drawIron(svg, padL, dx, Q, barTop, barBot);
+    if(animState.showPoles){
+      const m0=mmf(model,0);
+      schemaAnim={poles:drawPoles(svg, padL, dx, Q, barTop, barBot-barTop, barBot), maxA:Math.max(1e-6, ...m0.cum.map(Math.abs))};
+    }
     phases.forEach(ph=> drawPhasePath(svg, model, ph, padL, dx, Q, barTop, barBot, frontTop, backBot));
     drawSlotNumbers(svg, padL, dx, Q, barBot+13);
   }
+  tickSchema();   // aktuellen wt-Stand sofort anwenden (Pfeile + Pole)
 }
 
 /* --- Nutenstern --- */
@@ -924,7 +979,7 @@ function renderHarmonics(model){
 }
 
 /* --- MMK / Drehfeld --- */
-let mmkState={wt:0};
+let mmkState=animState;   // Alias: mmkState.wt === animState.wt (renderMMK nutzt mmkState.wt)
 function renderMMK(model){
   const svg=document.getElementById('mmk'); clear(svg);
   const Q=model.Q;
@@ -1115,21 +1170,55 @@ function refresh(useAutoPitch=false){
   }
 }
 
-/* Animation */
+/* Animation: tickSchema (gross -> nur setAttribute) + frame (Loop) + toggleAnim */
 let animId=null;
-function animate(){
-  const sp=+v('speed')/100*0.12;
-  mmkState.wt += sp;
-  renderMMK(CURRENT);
-  const deg=(mmkState.wt*180/Math.PI)%360;
+function tickSchema(){
+  if(!CURRENT) return;
+  const m = mmf(CURRENT, animState.wt);
+  const c = phaseCurrents(animState.wt);
+  // Stromrichtungspfeile: live nach Momentanstrom, oder statisches wt=0-Bild
+  for(const a of SCHEMA_ARROWS){
+    if(animState.liveArrows){
+      const i = a.coilSign * c[a.phase];                       // Momentanstrom dieser Spulenseite
+      const t = (a.side==='go') ? (i>0?-1:1) : (i<0?-1:1);
+      a.node.setAttribute('d', tri(a.x, a.my, t));
+      a.node.setAttribute('opacity', (0.16+0.69*Math.min(1,Math.abs(i))).toFixed(2));
+    } else {
+      const t = (a.side==='go') ? (a.coilSign>0?-1:1) : (a.coilSign<0?-1:1);
+      a.node.setAttribute('d', tri(a.x, a.my, t));
+      a.node.setAttribute('opacity','0.85');
+    }
+  }
+  // Polband: N (cum>=0) rot, S (cum<0) blau; Alpha ~ |Durchflutung|; Polgrenze = Vorzeichenwechsel
+  if(animState.showPoles && schemaAnim && schemaAnim.poles){
+    const maxA=schemaAnim.maxA, rects=schemaAnim.poles.rects, bnds=schemaAnim.poles.bnds;
+    for(let k=0;k<rects.length;k++){
+      const v=m.cum[k]||0;
+      rects[k].setAttribute('fill', v>=0 ? '#dc2626' : '#1e40af');
+      rects[k].setAttribute('fill-opacity', (0.06+Math.min(1,Math.abs(v)/maxA)*0.20).toFixed(3));
+    }
+    for(let k=0;k<bnds.length;k++){
+      const a=m.cum[k]||0, b=m.cum[k+1]||0;
+      bnds[k].setAttribute('opacity', (a>=0)!==(b>=0) ? '0.55' : '0');
+    }
+  }
+}
+function frame(ts){
+  if(!animState.playing) return;
+  const dt = animState.lastTs ? (ts-animState.lastTs)/1000 : 0;
+  animState.lastTs = ts;
+  animState.wt += (+v('speed'))/100 * 7.5 * dt;     // rad/s, FPS-unabhaengig
+  renderMMK(CURRENT);                                // klein -> kompletter Neuaufbau ok
+  tickSchema();                                      // gross -> nur Attribute
+  const w=animState.seq*animState.wt;
   document.getElementById('phaseReadout').textContent=
-    `iU=${Math.cos(mmkState.wt).toFixed(2)}  iV=${Math.cos(mmkState.wt-2*Math.PI/3).toFixed(2)}  iW=${Math.cos(mmkState.wt+2*Math.PI/3).toFixed(2)}`;
-  animId=requestAnimationFrame(animate);
+    `iU=${Math.cos(w).toFixed(2)}  iV=${Math.cos(w-2*Math.PI/3).toFixed(2)}  iW=${Math.cos(w+2*Math.PI/3).toFixed(2)}`;
+  animId=requestAnimationFrame(frame);
 }
 function toggleAnim(){
-  const btn=document.getElementById('playBtn');
-  if(animId){ cancelAnimationFrame(animId); animId=null; btn.innerHTML='&#9658; Start'; }
-  else { btn.innerHTML='&#10073;&#10073; Pause'; animate(); }
+  const set=t=>['playBtn','fieldPlayBtn'].forEach(id=>{const b=document.getElementById(id); if(b) b.innerHTML=t;});
+  if(animState.playing){ animState.playing=false; if(animId)cancelAnimationFrame(animId); animId=null; animState.lastTs=0; set('&#9658; Start'); }
+  else { animState.playing=true; animState.lastTs=0; set('&#10073;&#10073; Pause'); animId=requestAnimationFrame(frame); }
 }
 
 /* Presets */
@@ -1388,6 +1477,30 @@ function bind(){
     e.preventDefault();
     applyZoom(e.deltaY<0 ? SCHEMA_ZOOM*1.12 : SCHEMA_ZOOM/1.12);
   }, {passive:false});
+  // --- Drehfeld-Simulator-Steuerung ---
+  document.getElementById('fieldPlayBtn').addEventListener('click', toggleAnim);
+  document.getElementById('arrowSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    animState.liveArrows = b.dataset.arr==='live';
+    [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
+    tickSchema();
+  });
+  document.getElementById('poleSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    animState.showPoles = b.dataset.pole==='1';
+    [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
+    if(CURRENT) renderSchema(CURRENT);   // Polband bauen bzw. entfernen
+  });
+  document.getElementById('seqSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    animState.seq = +b.dataset.seq;
+    [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
+    if(CURRENT){ renderMMK(CURRENT); tickSchema(); }
+  });
+  document.getElementById('wtSlider').addEventListener('input',e=>{
+    animState.wt = (+e.target.value)*Math.PI/180;
+    if(CURRENT){ renderMMK(CURRENT); tickSchema(); }
+  });
 }
 
 /* ------------------------------ TESTS ------------------------------ */
