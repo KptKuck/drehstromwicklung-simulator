@@ -234,8 +234,8 @@
           </span></span>
         <span id="filterWrap"><span class="lbl">Strang isolieren</span>
           <span class="seg" id="filterSeg">
-            <button data-ph="all" class="active">Alle</button>
-            <button data-ph="U" style="color:var(--U)">U</button>
+            <button data-ph="all">Alle</button>
+            <button data-ph="U" style="color:var(--U)" class="active">U</button>
             <button data-ph="V" style="color:var(--V)">V</button>
             <button data-ph="W" style="color:var(--W)">W</button>
           </span></span>
@@ -616,9 +616,10 @@ function phColor(ph){ return PHASE_COLOR[ph]; }
 
 /* --- Wickelschema (abgewickelt, verfolgbar) --- */
 let SCHEMA_VIEW='overview';   // 'overview' | 'tracks'
-let SCHEMA_FILTER='all';      // 'all' | 'U' | 'V' | 'W'
+let SCHEMA_FILTER='U';        // Default: nur Strang U; 'all' | 'U' | 'V' | 'W'
 let COIL_CONCENTRIC=true;     // Default: konzentrisch (verschachtelt); false=Schleife (gleiche Weite)
-let SCHEMA_ZOOM=1;            // Zoomfaktor des Wickelschema-SVG (1 = einpassen/100%)
+let SCHEMA_ZOOM=1;            // Zoomfaktor des Wickelschema-SVG
+let SCHEMA_FIT=true;         // true = komplette Wicklung automatisch einpassen (Default)
 const TERM={U:['U1','U2'], V:['V1','V2'], W:['W1','W2']};
 
 /** Spulen eines Strangs in Verschaltungs-Reihenfolge (nach Hinleiter-Nut). */
@@ -661,11 +662,12 @@ function drawSlotNumbers(svg, x0, dx, Q, yBase){
    1) U1 (Anfang) startet IMMER an der INNEREN Spule der Polgruppe; verdrahtet wird
       von INNEN nach AUSSEN. U2 (Ende) an der AEUSSEREN Spule.
    2) Jede Spule wird go -> ret (links -> rechts) durchlaufen.
-   3) Jede Schaltverbindung startet IMMER im rechten Teil (ret-Seite) der Spule und
-      laeuft zur go-Seite der naechsten Spule. KEIN abwechselndes Links/Rechts.
-   4) Schaltverbindungen zwischen Spulen: GERADE. Nur kurze Nut-zu-Nut-Uebergaenge
-      (benachbarte Nuten): GEBOGEN, und nur rechts.
-   5) Schaltverbindungen/Uebergaenge liegen auf HALBER HOEHE der unteren Schenkel.
+   3) Jede Schaltverbindung startet am ENDE (ret-Seite, rechts) der Spule und fuehrt
+      zum ANFANG (go-Seite, links) der naechsten Spule. KEIN abwechselndes Links/Rechts.
+   4) Schaltverbindungen sind GERADE und RECHTWINKLIG (drei gerade Segmente): vom Ende
+      (ret) senkrecht NACH UNTEN, dann HORIZONTAL zur naechsten Spule, dann senkrecht
+      HOCH zum Anfang (go) der naechsten Spule. Keine schraegen Linien, keine Boegen.
+   5) Die horizontale Verschaltungs-Ebene liegt UNTER den unteren Wickelkoepfen.
    6) Ausfuehrungen U1/U2 ganz unten (senkrecht von der Nut bis zur Klemme). Nur U1
       (Anfang) und U2 (Ende) gehen ganz unten; dazwischen nur Schaltverbindungen.
 
@@ -742,8 +744,6 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
   });
   if(tips.length){
     const phaseIdx=(SCHEMA_FILTER==='all')?PHASES.indexOf(ph):0;
-    const lsm=t=>({x:(t.gx+t.mx)/2, y:barBot+t.a*0.5});   // linker Schenkel (go), halbe Hoehe
-    const rsm=t=>({x:(t.rx+t.mx)/2, y:barBot+t.a*0.5});   // rechter Schenkel (ret), halbe Hoehe
     // Polgruppen (zusammenhaengende Nuten); je Gruppe von INNEN (schmalste Spule) nach AUSSEN
     const ord=tips.slice().sort((a,b)=>a.c.go-b.c.go);
     const groups=[]; let cur=[ord[0]];
@@ -756,18 +756,13 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     const wid=t=>((t.c.ret-t.c.go)%Q+Q)%Q;               // Spulenweite
     const path=[];
     for(const grp of groups) path.push(...grp.map((t,i)=>({t,i})).sort((a,b)=>(wid(a.t)-wid(b.t))||(a.i-b.i)).map(o=>o.t));
-    // Strang seriell: jede Spule go->ret; jede Schaltverbindung startet IMMER im rechten
-    // Teil (ret-Seite) der Spule und laeuft zur go-Seite der naechsten. Kurze Nut-zu-Nut-
-    // Uebergaenge gebogen, laengere Schaltverbindungen gerade.
+    // Schaltverbindungen RECHTWINKLIG: vom Ende (ret) senkrecht nach unten, horizontal zur
+    // naechsten Spule, senkrecht hoch zum Anfang (go) der naechsten. Ebene unter den Wickelkoepfen.
+    const linkBase=barBot+apxMax+12;
     for(let k=0;k<path.length-1;k++){
-      const A=rsm(path[k]);                               // Start immer rechts (ret-Seite)
-      const B=lsm(path[k+1]);                             // Ziel: go-Seite der naechsten Spule
-      if(Math.abs(A.x-B.x)<1.7*dx){
-        const my=Math.max(A.y,B.y)+12+phaseIdx*14;        // kurzer Nut-zu-Nut-Uebergang, gebogen
-        line(`M ${A.x.toFixed(1)} ${A.y.toFixed(1)} Q ${((A.x+B.x)/2).toFixed(1)} ${my.toFixed(1)} ${B.x.toFixed(1)} ${B.y.toFixed(1)}`, 2.4);
-      } else {
-        line(`M ${A.x.toFixed(1)} ${A.y.toFixed(1)} L ${B.x.toFixed(1)} ${B.y.toFixed(1)}`, 2.4);   // gerade Schaltverbindung
-      }
+      const ax=path[k].rx, bx=path[k+1].gx;              // Ende (ret) -> Anfang (go) der naechsten Spule
+      const Y=linkBase + (k%4)*9 + phaseIdx*7;           // leicht gestaffelt gegen Ueberlappung
+      line(`M ${ax.toFixed(1)} ${barBot} L ${ax.toFixed(1)} ${Y.toFixed(1)} L ${bx.toFixed(1)} ${Y.toFixed(1)} L ${bx.toFixed(1)} ${barBot}`, 2.2);
     }
     // Ausfuehrungen ganz unten: U1 an der inneren Spule (Eintritt go), U2 am Austritt (ret) der aeusseren
     const term=(x,label)=>{
@@ -794,7 +789,9 @@ function renderSchema(model){
     const Wd=padL+padR+Q*dx, H=titleH+3*trackH+14;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`);
     svg.setAttribute('width',Wd); svg.setAttribute('height',H);
-    svg.style.width=(Wd*SCHEMA_ZOOM).toFixed(0)+'px'; svg.style.height=(H*SCHEMA_ZOOM).toFixed(0)+'px'; svg.style.minWidth='0';
+    let _z=SCHEMA_ZOOM;
+    if(SCHEMA_FIT){ const _cw=(document.querySelector('.svg-scroll')||{}).clientWidth||0; if(_cw>0){ _z=Math.max(0.3,Math.min(1,(_cw-4)/Wd)); SCHEMA_ZOOM=_z; } }
+    svg.style.width=(Wd*_z).toFixed(0)+'px'; svg.style.height=(H*_z).toFixed(0)+'px'; svg.style.minWidth='0';
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
       lbl+' — Strang-Spuren (jeder Pfad einzeln)'));
     PHASES.forEach((ph,ti)=>{
@@ -817,7 +814,9 @@ function renderSchema(model){
     const Wd=padL+padR+Q*dx, H=titleH+frontSpan+barH+backSpan+8;
     svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`);
     svg.setAttribute('width',Wd); svg.setAttribute('height',H);
-    svg.style.width=(Wd*SCHEMA_ZOOM).toFixed(0)+'px'; svg.style.height=(H*SCHEMA_ZOOM).toFixed(0)+'px'; svg.style.minWidth='0';
+    let _z=SCHEMA_ZOOM;
+    if(SCHEMA_FIT){ const _cw=(document.querySelector('.svg-scroll')||{}).clientWidth||0; if(_cw>0){ _z=Math.max(0.3,Math.min(1,(_cw-4)/Wd)); SCHEMA_ZOOM=_z; } }
+    svg.style.width=(Wd*_z).toFixed(0)+'px'; svg.style.height=(H*_z).toFixed(0)+'px'; svg.style.minWidth='0';
     svg.appendChild(el('text',{x:padL,y:20,'font-size':12.5,fill:'#1f2733','font-weight':700},
       lbl+(SCHEMA_FILTER!=='all'?` — nur Strang ${SCHEMA_FILTER}`:'')));
     drawIron(svg, padL, dx, Q, barTop, barBot);
@@ -1345,19 +1344,13 @@ function bind(){
     [...e.currentTarget.children].forEach(x=>x.classList.toggle('active',x===b));
     refresh(false);   // Spulenform aendert das Modell (coils) -> neu berechnen
   });
-  // Zoom des Wickelschemas (komplette Wicklung)
-  const fitZoom=()=>{
-    const svg=document.getElementById('schema');
-    const vbW=(svg.viewBox.baseVal&&svg.viewBox.baseVal.width)||+svg.getAttribute('width')||1;
-    const cw=(document.querySelector('.svg-scroll').clientWidth)||vbW;
-    return Math.max(0.3, Math.min(1, (cw-4)/vbW));
-  };
-  const applyZoom=z=>{ SCHEMA_ZOOM=Math.max(0.3,Math.min(5,z)); if(CURRENT) renderSchema(CURRENT); };
+  // Zoom des Wickelschemas (komplette Wicklung). Fit wird in renderSchema berechnet.
+  const applyZoom=z=>{ SCHEMA_FIT=false; SCHEMA_ZOOM=Math.max(0.3,Math.min(5,z)); if(CURRENT) renderSchema(CURRENT); };
   document.getElementById('zoomSeg').addEventListener('click',e=>{
     const b=e.target.closest('button'); if(!b) return;
     if(b.dataset.zoom==='in') applyZoom(SCHEMA_ZOOM*1.25);
     else if(b.dataset.zoom==='out') applyZoom(SCHEMA_ZOOM/1.25);
-    else applyZoom(fitZoom());        // komplette Wicklung einpassen
+    else { SCHEMA_FIT=true; if(CURRENT) renderSchema(CURRENT); }   // komplette Wicklung einpassen
   });
   const scroll=document.querySelector('.svg-scroll');
   if(scroll) scroll.addEventListener('wheel',e=>{
@@ -1460,6 +1453,9 @@ window.addEventListener('DOMContentLoaded',()=>{
   const fromHash=loadFromHash();
   if(!fromHash){ const i20=PRESETS.findIndex(p=>p.num===20); loadPresetIdx(i20>=0?i20:1); }   // Default: Wicklung Nr. 20
   else refresh(false);
+  // Default: kompletten Strang einpassen (SCHEMA_FIT=true). Re-Render, sobald die Spaltenbreite steht.
+  requestAnimationFrame(()=>{ if(CURRENT) renderSchema(CURRENT); });
+  addEventListener('resize',()=>{ if(SCHEMA_FIT && CURRENT) renderSchema(CURRENT); });
   if(new URLSearchParams(location.search).get('selftest')==='1'){
     runSelfTest();
   }
