@@ -720,29 +720,28 @@ function drawPhasePath(svg, model, ph, x0, dx, Q, barTop, barBot, frontTop, back
     const wid=t=>((t.c.ret-t.c.go)%Q+Q)%Q;               // Spulenweite
     const path=[];
     for(const grp of groups) path.push(...grp.map((t,i)=>({t,i})).sort((a,b)=>(wid(a.t)-wid(b.t))||(a.i-b.i)).map(o=>o.t));
-    // Strang seriell verdrahten: Spule abwechselnd durchlaufen (Eintritt links/rechts).
-    // Rechte Nut-zu-Nut-Spruenge gebogen, alle uebrigen Schaltverbindungen gerade.
+    // Strang seriell: jede Spule go->ret; jede Schaltverbindung startet IMMER im rechten
+    // Teil (ret-Seite) der Spule und laeuft zur go-Seite der naechsten. Kurze Nut-zu-Nut-
+    // Uebergaenge gebogen, laengere Schaltverbindungen gerade.
     for(let k=0;k<path.length-1;k++){
-      const exitRight=(k%2===0);
-      const A=exitRight?rsm(path[k]):lsm(path[k]);
-      const B=exitRight?rsm(path[k+1]):lsm(path[k+1]);
-      if(exitRight && Math.abs(A.x-B.x)<1.7*dx){
-        const my=Math.max(A.y,B.y)+12+phaseIdx*14;       // gebogener Nut-zu-Nut-Uebergang (rechts)
+      const A=rsm(path[k]);                               // Start immer rechts (ret-Seite)
+      const B=lsm(path[k+1]);                             // Ziel: go-Seite der naechsten Spule
+      if(Math.abs(A.x-B.x)<1.7*dx){
+        const my=Math.max(A.y,B.y)+12+phaseIdx*14;        // kurzer Nut-zu-Nut-Uebergang, gebogen
         line(`M ${A.x.toFixed(1)} ${A.y.toFixed(1)} Q ${((A.x+B.x)/2).toFixed(1)} ${my.toFixed(1)} ${B.x.toFixed(1)} ${B.y.toFixed(1)}`, 2.4);
       } else {
         line(`M ${A.x.toFixed(1)} ${A.y.toFixed(1)} L ${B.x.toFixed(1)} ${B.y.toFixed(1)}`, 2.4);   // gerade Schaltverbindung
       }
     }
-    // Ausfuehrungen ganz unten: U1 an der inneren Spule (Eintritt go), U2 am Austritt der aeusseren
+    // Ausfuehrungen ganz unten: U1 an der inneren Spule (Eintritt go), U2 am Austritt (ret) der aeusseren
     const term=(x,label)=>{
       line(`M ${x.toFixed(1)} ${barBot} L ${x.toFixed(1)} ${backBot}`, 2.2);
       svg.appendChild(el('circle',{cx:x,cy:backBot,r:5.5,fill:col,stroke:'#fff','stroke-width':1.5}));
       svg.appendChild(el('text',{x:x,y:backBot+17,'text-anchor':'middle','font-size':11.5,
         fill:col,'font-weight':700},label));
     };
-    const last=path[path.length-1], lastExitRight=((path.length-1)%2===0);
     term(path[0].gx, TERM[ph][0]);                       // U1 an der inneren Spule (go-Seite)
-    term(lastExitRight?last.rx:last.gx, TERM[ph][1]);    // U2 am Austritt der aeusseren Spule
+    term(path[path.length-1].rx, TERM[ph][1]);           // U2 am Austritt (ret-Seite) der aeusseren Spule
   }
 }
 
